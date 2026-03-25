@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="Flappyverse - The Ultimate Web Adventure">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Flappyverse">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="apple-touch-icon" href="flappyverse.png">
+  <link rel="icon" type="image/png" href="flappyverse.png">
+  <title>Flappyverse v2 - Premium</title>
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Modern UI Framework (Tailwind via unpkg) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lottiefiles Player for Beautiful Animations -->
+  <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+
+  <!-- Custom Styles (Kenney x Glassmorphism Theme) -->
+  <link rel="stylesheet" href="style.css">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Outfit', 'sans-serif'] },
+          colors: {
+            glass: 'rgba(255, 255, 255, 0.1)',
+            kprimary: '#6366f1',
+            ksec: '#8b5cf6',
+            kaccent: '#f59e0b',
+            kdark: 'rgba(15, 23, 42, 0.85)'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-slate-900 flex items-center justify-center h-screen w-screen overflow-hidden text-white font-sans text-shadow-sm select-none">
+  
+  <div id="gameWrapper" class="relative overflow-hidden w-full h-full max-w-[450px] max-h-[800px] shadow-2xl rounded-2xl mx-auto shadow-indigo-500/20">
+    
+    <!-- Gameplay Layer -->
+    <canvas id="gameCanvas" class="w-full h-full block touch-none z-0"></canvas>
+    
+    <!-- Dynamic HTML UI Layer (Injected by JS) -->
+    <div id="html-ui" class="absolute inset-0 z-10 overflow-hidden flex flex-col transition-all duration-300" style="pointer-events:none;">
+       <!-- Screens will be mounted here by game.js UI module -->
+    </div>
+
+  </div>
+
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6rQMxtWtmaMrB5KW-VQGUC4z5keQXjcw",
+      authDomain: "flappyverse-76c6f.firebaseapp.com",
+      projectId: "flappyverse-76c6f",
+      storageBucket: "flappyverse-76c6f.firebasestorage.app",
+      messagingSenderId: "578856265624",
+      appId: "1:578856265624:web:d25b95e4e5fd4e89302ded",
+      measurementId: "G-0RELCT0GNT"
+    };
+    firebase.initializeApp(firebaseConfig);
+    try { firebase.analytics(); } catch(e) {}
+    window.fbDb = firebase.firestore();
+  </script>
+  <script src="game.js?v=13"></script>
+  <script src="ui.js?v=13"></script>
+</body>
+</html>
