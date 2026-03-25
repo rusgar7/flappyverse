@@ -273,12 +273,15 @@ const LEVELS = [
     sky:['#020617','#0c0a1e','#030014'], gc:['#0c0a1e','#020617','#000010'],
     pc:['#6366f1','#4338ca','#312e81','#818cf8','#c7d2fe'], stars:60
   },
-  // B8 — Ölümcül Otoyol: Frogger modu - Şerit atlama mekaniği
+  // B8 — Ölümcül Otoyol: Kuşbakışı di̇key şerrit + yatay scroll
   {
-    mode:'frogger', lanes: 10, roadWidth: 380, tgt:40, cv:4, xpR:300, grav:0, jf:0, spdMul:0,
+    mode:'frogger', lanes: 12, tgt:15, cv:3, xpR:500, grav:0, jf:0, spdMul:0,
     wind:0, movObs:false, darkness:false, autoFlip:0, obsStyle:'car', topDown:true,
-    sky:['#1f2937','#111827','#030712'], gc:['#374151','#1f2937','#4b5563'],
-    pc:['#fbbf24','#ef4444','#3b82f6','#ffffff','#10b981'], stars:10
+    sky:['#0a0e1a','#060a14','#020407'], gc:['#0a0e1a','#060a14','#020407'],
+    pc:['#f59e0b','#ef4444','#3b82f6','#ffffff','#10b981'], stars:0,
+    carColors: ['#ef4444','#f97316','#3b82f6','#06b6d4','#10b981','#a855f7','#ec4899','#fbbf24','#64748b','#f8fafc'],
+    // Di̇key şerit hız çarpanları (sola→sağa artan tehlike)
+    laneSpeedMul: [0.8,1.0,1.2,1.4,1.7,2.0,2.3,2.6,3.0,3.4,3.9,4.5]
   },
   // B9 — Saf Flappy (Dereceli): SONSUZ skor saldırısı
   {
@@ -308,6 +311,13 @@ function backBtn() { rr(12, 12, 88, 34, 10); ctx.fillStyle = 'rgba(0,0,0,.4)'; c
 function goldBadge(x, y) { ctx.font = 'bold 16px Outfit'; ctx.textAlign = 'right'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = 8; ctx.fillText(`🌟 ${coins}`, x, y); ctx.shadowBlur = 0; }
 function xpBar(x, y, w, h) { const pct = (playerXP % (XP_PER_LV)) / XP_PER_LV; rr(x, y, w, h, 4); ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fill(); if (pct > 0) { const g = ctx.createLinearGradient(x, 0, x + w, 0); g.addColorStop(0, '#a78bfa'); g.addColorStop(1, '#7c3aed'); ctx.fillStyle = g; rr(x, y, w * pct, h, 4); ctx.fill(); } ctx.font = '10px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.textAlign = 'left'; ctx.fillText(`Lv ${playerLv} · ${playerXP % XP_PER_LV}/${XP_PER_LV} XP`, x, y + h + 11); }
 function hitTest(b, cx, cy) { return b && cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h; }
+function adjustBrightness(hex, factor) {
+  try {
+    let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b2 = parseInt(hex.slice(5,7),16);
+    r = Math.min(255,Math.round(r*factor)); g = Math.min(255,Math.round(g*factor)); b2 = Math.min(255,Math.round(b2*factor));
+    return `rgb(${r},${g},${b2})`;
+  } catch(e) { return hex; }
+}
 
 /* ── DRAW CHARACTER ── */
 function drawChar(ch, x, y, r, rot = 0, crk = 0) {
@@ -1233,6 +1243,16 @@ const G = {
     this.flappyGlitchFlash = 0;
     this.flappyGlitchDir = 1;
     this.flappyGlitchTimer = 0;
+    // Frogger / Ölümcül Otoyol state sıfırla
+    this.cars = [];
+    this._frogLane = -1; // -1 denotes left sidewalk
+    this._frogTutorial = 220; // Show tutorial overlay at start
+    this._frogMaxLane = 0;
+    this._frogDiffMul = 0.5; // Sabit "Çok Kolay" (hız seviyesi 0.5 yapıldı)
+    this._frogMoving = 0;
+    this._frogSpawnTimer = 0;
+    this._frogCoins = [];
+    this._frogCoinTimer = 0;
     PARTS.length = 0; this.sf = lv.stars > 0 ? new StarField(lv.stars) : null;
   },
   _unlockNextLevel() {
@@ -1267,9 +1287,20 @@ const G = {
   revive() {
     this.dead = false; this.state = ST.PLAY; this.deadT = 0; this.deadTimer = 0;
     this.player.alive = true;
-    this.player.y = (H - GROUND_H) / 2;
+    
+    if (this.cfg && this.cfg.mode === 'frogger') {
+      this._frogSafeLane = this._frogLane; // Mark current lane as safe
+      this.player.y = H * 0.5; // Frogger uses fixed canvas Y
+      if (this.cars) {
+        this.cars = this.cars.filter(c => c.lane !== this._frogLane);
+      }
+      this.isReviveWait = false; // flow immediately!
+    } else {
+      this.player.y = (H - GROUND_H) / 2;
+      this.isReviveWait = true; // wait for tap to continue
+    }
+    
     this.player.vy = 0; this.player.crk = 0; this.player.rot = 0;
-    this.isReviveWait = true; // wait for tap to continue
     this.blocks = []; 
     if (this.cfg && this.cfg.mode === 'cyber') {
       this.obs.forEach(o => {
@@ -1296,23 +1327,58 @@ const G = {
   },
   tap(cx, cy) {
     if (this.state === ST.PLAY) {
+      if (this.player && !this.player.alive) return; // Prevent inputs during death animation
+      
       if (this.isReviveWait) {
           this.isReviveWait = false;
           this.player.vy = 0;
+          if (this.cfg && this.cfg.mode === 'frogger') {
+              if (this._frogTutorial > 45) this._frogTutorial = 45; // Sadece bașlangıçtaysa fade-out yap
+              return; // İlk dokunuşta hareketi iptal et / sadece oyunu bașlat veya unfreeze
+          }
       }
       
       if (this.cfg && this.cfg.mode === 'frogger') {
-          this.player.lane = this.player.lane !== undefined ? this.player.lane : 4;
-          if (cx < W/2) {
-             this.player.lane = Math.max(0, this.player.lane - 1);
+          // Tutorial animasyonu her tıkta hızlıca bitir
+          if (this._frogTutorial > 0) this._frogTutorial = Math.min(this._frogTutorial, 45);
+          
+          // Başlatmadıysa başlat: kaldırımdan (lane=-1) başla
+          if (this._frogLane === undefined) this._frogLane = -1;
+          
+          if (cx > W / 2) {
+            // SAĞ = İLERİ
+            const LANES = this.cfg.lanes || 12;
+            if (this._frogLane < LANES) {
+              this._frogLane++;
+              this._frogSafeLane = -1; // Reset safe lane
+              if (this._frogLane === LANES) {
+                // SAĞ KALDIRIM = GEÇİŞ BAŞARILI!
+                this.score++;
+                sfxScore();
+                spawnParts(W/2, H*0.5, '#fbbf24', 28, 8);
+                [523, 659, 784, 1047].forEach((f,i) => setTimeout(() => tonePlus(f,'sine',0.2,0.14,true), i*70));
+                this._frogLane = -1; // Sol kaldırıma dön
+                if (this.score >= this.cfg.tgt && !this.unlockedNext) this._unlockNextLevel();
+              } else {
+                tonePlus(500 + this._frogLane * 25, 'sine', 0.07, 0.1, true);
+                spawnParts(W/2, H*0.5, '#4ade80', 5, 2);
+              }
+            }
           } else {
-             this.player.lane = Math.min(9, this.player.lane + 1);
+            // SOL = GERİ
+            if (this._frogLane > -1) {
+              this._frogLane--;
+              this._frogSafeLane = -1; // Reset safe lane
+              tonePlus(380, 'sine', 0.06, 0.08);
+              spawnParts(W/2, H*0.5, '#f87171', 4, 2);
+            } else {
+              // Zaten kaldırımda, geri gidilmez
+              tonePlus(160, 'triangle', 0.1, 0.1);
+              this._shk = 4;
+            }
           }
-          this.player.x = (W / 10) * this.player.lane + (W/10)/2;
-          this.player.y = H - 120; // Fixed bottom view
-          this.player.rot = 0;
-          this.player.vy = 0;
-          sfxFlap();
+          // Smooth kamera kayması
+          this._frogMoving = 12;
           return;
       }
       
@@ -1335,7 +1401,9 @@ const G = {
     
     // Revive bekleme durumu: sadece ekranı dondur ama arkaplan efektleri dönsün
     if (this.state === ST.PLAY && this.isReviveWait) {
-        this.player.y += Math.sin(this.tick * 0.1) * 0.5; // hover effect
+        if (!this.cfg || this.cfg.mode !== 'frogger') {
+            this.player.y += Math.sin(this.tick * 0.1) * 0.5; // hover effect (except frogger)
+        }
         this.player.rot = 0;
         return;
     }
@@ -1538,33 +1606,153 @@ const G = {
       }
     }
     
-    // FROGGER: Cars Update & Collisions
+    // ── ÖLÜMCÜL OTOYOL: Di̇key şerit sistemi (araçlar YUKARI-AŞaĞİ, oyuncu SAL-SAĞA) ──
     if (lv.mode === 'frogger') {
-      this.cars = this.cars || [];
-      // spawn logic (reusing this.pt)
-      if (this.pt >= Math.max(15, 60 - this.score/2)) {
-         this.pt = 0;
-         const lane = Math.floor(Math.random() * 10);
-         const carSpd = 5 + Math.random() * 3 + (this.score/8);
-         this.cars.push({
-            lane: lane, x: (W/10)*lane + (W/10)/2, y: -100, w: 32, h: 64, vy: carSpd,
-            c: ['#ef4444','#3b82f6','#fbbf24','#ffffff'][Math.floor(Math.random()*4)],
-            passed: false 
-         });
+      // ── SABITLER ──
+      const FLANE_W = 50;  // Her şeridin genişliği (dünya koordinatı)
+      const FSIDE_W = 55;  // Kaldırım genişliği
+      const FLANES = lv.lanes || 12;
+      const FPLAYER_Y = H * 0.5; // Oyuncu sabit Y
+      // Oyuncunun dünya X pozisyonu
+      // ── STATE BAŞLATMA (Geri kalanı init()'te başlar) ──
+      const playerWorldX = (lane) => lane < 0
+        ? FSIDE_W * 0.5
+        : FSIDE_W + lane * FLANE_W + FLANE_W * 0.5;
+
+      if (this._frogCameraX === undefined) {
+         this._frogCameraX = playerWorldX(-1);
       }
+      if (this._frogTutorial > 0) this._frogTutorial--;
+      
+      // ── KAMERA SMOOTH KAYMA ──
+      const targetCameraX = playerWorldX(this._frogLane);
+      this._frogCameraX = (this._frogCameraX || targetCameraX);
+      this._frogCameraX += (targetCameraX - this._frogCameraX) * 0.12;
+      
+      // Player canvas X: her zaman W/2
+      this.player.x = W * 0.5;
+      this.player.y = FPLAYER_Y;
+      this.player.vy = 0;
+      
+      // ── ARAÇ SPAWN ──
+      this.cars = this.cars || [];
+      this._frogSpawnTimer = (this._frogSpawnTimer || 0) + 1;
+      const diffMul = this._frogDiffMul || 1;
+      // Spawn interval: başlangıçta rahat, gittikçe sıklaşır (ama çok da sık değil)
+      const spawnInterval = Math.max(22, Math.floor(52 / diffMul));
+      
+      if (this._frogSpawnTimer >= spawnInterval) {
+        this._frogSpawnTimer = 0;
+        // Her şeritte ayrı ayrı spawn — yakın şeritlere daha seyrek
+        for (let L = 0; L < FLANES; L++) {
+          if (this._frogSafeLane === L) continue; // Revival safe koruması varsa bu şeride araba doğurma
+          
+          // Oyuncunun bulunduğu şeritte hemen spawn etme (biraz koruma)
+          const isPlayerLane = L === this._frogLane;
+          const spawnChance = isPlayerLane ? 0.05 : (0.25 + L * 0.02);
+          if (Math.random() > spawnChance) continue;
+          
+          // Di̇ley şerit yönü: tek şeritler aşağı, çift şeritler yukarı
+          const goesDown = L % 2 === 0;
+          // Bütün şeritlerdeki araçlar eşit hıza sahip olacak
+          const baseSpd = 5.0 * diffMul; 
+          // Max hız sınırı
+          const vy = baseSpd * (goesDown ? 1 : -1);
+          const startY = goesDown ? -70 : H + 70;
+          // Dünya X: şeritin merkezi
+          const carWorldX = FSIDE_W + L * FLANE_W + FLANE_W * 0.5;
+          const carLen = 28 + Math.floor(Math.random() * 3) * 12; // 28/40/52 (sedan/SUV/kamyon)
+          const carWid = 17;
+          const colors = lv.carColors || ['#ef4444','#3b82f6','#fbbf24'];
+          const carColor = colors[Math.floor(Math.random() * colors.length)];
+          const isNeon = Math.random() < 0.18;
+          this.cars.push({
+            lane: L, worldX: carWorldX,
+            y: startY, vy,
+            len: carLen, wid: carWid,
+            c: carColor, goesDown,
+            neon: isNeon,
+            lights: Math.random() < 0.55,
+            type: carLen <= 28 ? 'sedan' : carLen <= 40 ? 'suv' : 'truck'
+          });
+        }
+      }
+      
+      // ── ARAÇLARI GÜNCELLE ──
       this.cars.forEach(c => { c.y += c.vy; });
-      this.cars = this.cars.filter(c => c.y < H + 200);
-      for (const c of this.cars) {
-         if (!c.passed && c.y > this.player.y + this.player.r) { 
-             c.passed = true; this.score++; sfxScore(); 
-             if (this.score >= lv.tgt && !this.unlockedNext) { this._unlockNextLevel(); }
-         }
-         // collision player hit test (circle vs aabb approx)
-         if (Math.abs(c.x - this.player.x) < c.w/2 + this.player.r*0.6 &&
-             Math.abs(c.y - this.player.y) < c.h/2 + this.player.r*0.6) {
-             this._checkDamage(this.player);
-             if (!this.player.alive) return;
-         }
+      this.cars = this.cars.filter(c => c.y > -150 && c.y < H + 150);
+      
+      // ── COIN SPAWN ──
+      this._frogCoins = this._frogCoins || [];
+      this._frogCoinTimer = (this._frogCoinTimer || 0) + 1;
+      if (this._frogCoinTimer >= 80) { // Her ~1.3 saniyede bir dene
+        this._frogCoinTimer = 0;
+        for (let L = 0; L < FLANES; L++) {
+          if (Math.random() < 0.35 && this._frogCoins.filter(c => c.lane === L).length < 2) {
+            const isDiamond = Math.random() < 0.04;
+            const goesDown = L % 2 === 0;
+            // Coin şeridin yönünde akar (çok yavaş)
+            const coinVy = (goesDown ? 1 : -1) * 0.8;
+            this._frogCoins.push({
+              lane: L,
+              worldX: FSIDE_W + L * FLANE_W + FLANE_W * 0.5,
+              y: Math.random() * (H - 80) + 40,
+              vy: coinVy,
+              isDiamond,
+              r: isDiamond ? 12 : 9,
+              anim: Math.random() * Math.PI * 2
+            });
+          }
+        }
+      }
+      // Coinleri hareket ettir + sınır kontrolu
+      this._frogCoins.forEach(c => {
+        c.y += c.vy;
+        c.anim += 0.07;
+        if (c.y < -20) c.y = H + 20;
+        if (c.y > H + 20) c.y = -20;
+      });
+      // Coin toplama: oyuncu giriş yaptı + Y yakınsa
+      this._frogCoins = this._frogCoins.filter(fc => {
+        if (fc.lane === this._frogLane && Math.abs(fc.y - FPLAYER_Y) < 38) {
+          // Topla!
+          const cv = lv.cv || 3;
+          if (fc.isDiamond) {
+            diamonds++; totalDiamondsEarned++;
+            sfxXP(); spawnParts(W*0.5, FPLAYER_Y, '#06b6d4', 14, 5);
+          } else {
+            coins += cv; totalCoinsEarned += cv; this.sesC += cv;
+            sfxCoin(); spawnParts(W*0.5, FPLAYER_Y, '#fbbf24', 8, 3);
+          }
+          saveAll();
+          return false; // sil
+        }
+        return true;
+      });
+      
+      // ── ÇARPIŞMA TESTI ──
+      // Oyuncu sadece trafik şeridindeyse çarpışabilir (kaldırımda değil)
+      if (this._frogLane >= 0 && this._frogLane < FLANES) {
+        const plWorldX = playerWorldX(this._frogLane);
+        const PLAYER_R = 13;
+        for (const c of this.cars) {
+          if (c.lane !== this._frogLane) continue; // Farklı şerit — es geç
+          // Di̇key AABB: yatay merkez = c.worldX, dikey = c.y ± c.len/2
+          const carTop = c.y - c.len * 0.5;
+          const carBot = c.y + c.len * 0.5;
+          const carL = c.worldX - c.wid * 0.5;
+          const carR = c.worldX + c.wid * 0.5;
+          // Screen çarpışma: oyuncu daima W*0.5, FPLAYER_Y
+          const plScrX = W * 0.5;
+          const plScrY = FPLAYER_Y;
+          // Araç ekran X = c.worldX - this._frogCameraX + W*0.5
+          const cScrX = c.worldX - this._frogCameraX + W * 0.5;
+          if (Math.abs(cScrX - plScrX) < c.wid * 0.5 + PLAYER_R &&
+              Math.abs(c.y - plScrY) < c.len * 0.5 + PLAYER_R) {
+            this._checkDamage(this.player);
+            if (!this.player.alive) return;
+          }
+        }
       }
     }
     
@@ -1606,14 +1794,16 @@ const G = {
       }
     }
     
-    // Space mode has no bounding death on top/bottom
-    if (lv.mode !== 'space') {
+    // Space / Frogger mode has no bounding death on top/bottom
+    if (lv.mode !== 'space' && lv.mode !== 'frogger') {
       if (pl.y + pl.r >= H - GROUND_H || pl.y - pl.r <= 0) { this._checkDamage(pl); if(!pl.alive) return; }
     }
-    for (const o of this.obs) {
-      if (o.hits(pl)) { this._checkDamage(pl); if(!pl.alive) return; }
-      // H6 FIX: jellyfish collision check
-      if (o.hitsJelly && o.hitsJelly(pl)) { this._checkDamage(pl); if(!pl.alive) return; }
+    if (lv.mode !== 'frogger') {
+      for (const o of this.obs) {
+        if (o.hits(pl)) { this._checkDamage(pl); if(!pl.alive) return; }
+        // H6 FIX: jellyfish collision check
+        if (o.hitsJelly && o.hitsJelly(pl)) { this._checkDamage(pl); if(!pl.alive) return; }
+      }
     }
   },
   _done() {
@@ -1679,7 +1869,7 @@ const G = {
         ctx.translate(-W/2 - dx, -H/2 - dy);
     }
 
-    drawSky(this.cfg); if (this.sf) this.sf.draw(); this.clouds.forEach(c => c.draw());
+    if (this.cfg.mode !== 'frogger') { drawSky(this.cfg); if (this.sf) this.sf.draw(); this.clouds.forEach(c => c.draw()); }
     // Cyber (B5) background neon rain
     if (this.cfg.mode === 'cyber') {
       ctx.save(); ctx.globalAlpha = 0.22;
@@ -1703,34 +1893,346 @@ const G = {
       this.obs.forEach(o => o.draw());
       if (this.spaceObs) this.spaceObs.forEach(o => o.draw());
     }
-    drawGround(this.goff, this.cfg.gc); 
+    if (this.cfg.mode !== 'frogger') drawGround(this.goff, this.cfg.gc); 
     
-    // FROGGER: Draw top-down cars on ground before player
-    if (this.cfg.mode === 'frogger' && this.cars) {
-       ctx.save();
-       // Yaya Geçiçi çizgileri çiz
-       ctx.fillStyle = 'rgba(255,255,255,0.7)';
-       for (let i=0; i<10; i++) {
-           ctx.fillRect((W/10)*i + 20, this.player.y - 40, 6, 80);
-       }
-       // Arabaları çiz
-       this.cars.forEach(c => {
-          ctx.fillStyle = c.c;
-          ctx.fillRect(c.x - c.w/2, c.y - c.h/2, c.w, c.h);
-          // Camlar
-          ctx.fillStyle = 'rgba(0,0,0,0.4)';
-          ctx.fillRect(c.x - c.w/2 + 4, c.y - c.h/2 + 10, c.w - 8, c.h * 0.25);
-          ctx.fillRect(c.x - c.w/2 + 4, c.y + c.h/2 - 20, c.w - 8, c.h * 0.15);
-          // Farlar (aşağı gidiyorsa alt, yukarı gidiyorsa üst, burda hep aşaği düsuyorlar)
-          ctx.fillStyle = '#fde047'; ctx.shadowColor = '#fef08a'; ctx.shadowBlur = 8;
-          ctx.fillRect(c.x - c.w/2 + 4, c.y + c.h/2 - 4, 6, 4);
-          ctx.fillRect(c.x + c.w/2 - 10, c.y + c.h/2 - 4, 6, 4);
+    // ── ÖLÜMCÜL OTOYOL: Tam kuşbakışı çizim sistemi (di̇key şeritler, yatay scroll) ──
+    if (this.cfg.mode === 'frogger') {
+      const FLANE_W = 50;
+      const FSIDE_W = 55;
+      const FLANES = this.cfg.lanes || 12;
+      const FPLAYER_Y = H * 0.5;
+      const camX = this._frogCameraX || FSIDE_W * 0.5;
+      const tk = this.tick;
+      const pl = this.player;
+      // Ekran X hesabı: worldX → screenX
+      const wx2sx = (worldX) => worldX - camX + W * 0.5;
+      // Sol kaldırım dünya X merkezi
+      const leftSideWorldX = FSIDE_W * 0.5;
+      // Sağ kaldırım dünya X merkezi
+      const rightSideWorldX = FSIDE_W + FLANES * FLANE_W + FSIDE_W * 0.5;
+      // Tüm yol genişliği
+      const roadEndWorldX = FSIDE_W + FLANES * FLANE_W + FSIDE_W;
+      
+      ctx.save();
+      
+      // ── 1. ASFALT ZEMİN (tüm kanvas) ──
+      ctx.fillStyle = '#0d1117';
+      ctx.fillRect(0, 0, W, H);
+      
+      // ── 2. YOLU DÜNYA KOORDINATINDA ÇİZ ──
+      const roadStartSx = wx2sx(0);
+      const roadEndSx = wx2sx(roadEndWorldX);
+      
+      // Yol zemini (trafik alanı sadece)
+      const laneAreaStartSx = wx2sx(FSIDE_W);
+      const laneAreaW = FLANES * FLANE_W;
+      ctx.fillStyle = '#161b22';
+      ctx.fillRect(laneAreaStartSx, 0, laneAreaW, H);
+      
+      // Altşerritlerin renk alternasyonu (sol-sağ trafik yönü göstergesi)
+      for (let L = 0; L < FLANES; L++) {
+        const lsx = wx2sx(FSIDE_W + L * FLANE_W);
+        if (L % 2 === 0) {
+          ctx.fillStyle = 'rgba(59,130,246,0.04)'; // Aşağı giden
+        } else {
+          ctx.fillStyle = 'rgba(239,68,68,0.04)'; // Yukarı giden
+        }
+        ctx.fillRect(lsx, 0, FLANE_W, H);
+        
+        // Di̇key kesik şerit çizgileri (animasyonlu)
+        const laneEdgeSx = wx2sx(FSIDE_W + L * FLANE_W);
+        if (L > 0 && L !== FLANES / 2) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([18, 18]);
+          // Aşağı giden şeritte çizgi aşağı, yukarı gidende yukarı kayar
+          const dashDir = L % 2 === 0 ? 1 : -1;
+          ctx.lineDashOffset = (tk * 2.5 * dashDir) % 36;
+          ctx.beginPath(); ctx.moveTo(laneEdgeSx, 0); ctx.lineTo(laneEdgeSx, H); ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      
+      // Orta çift sarı bant (sol ⇔ sağ yön ayırıcı)
+      const midLaneSx = wx2sx(FSIDE_W + FLANES * 0.5 * FLANE_W);
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 3; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(midLaneSx - 2, 0); ctx.lineTo(midLaneSx - 2, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(midLaneSx + 2, 0); ctx.lineTo(midLaneSx + 2, H); ctx.stroke();
+      
+      // Yol kenar beyaz çizgileri
+      const lEdge = wx2sx(FSIDE_W);
+      const rEdge = wx2sx(FSIDE_W + FLANES * FLANE_W);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(lEdge, 0); ctx.lineTo(lEdge, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rEdge, 0); ctx.lineTo(rEdge, H); ctx.stroke();
+      
+      // ── 3. SOL KALDIRIM ──
+      const leftSideSx = wx2sx(0);
+      if (leftSideSx < W) {
+        ctx.fillStyle = '#2d4a2d';
+        ctx.fillRect(leftSideSx, 0, FSIDE_W, H);
+        // Kaldırım çim dokus
+        ctx.fillStyle = '#3a5c3a';
+        for (let gy = 0; gy < H; gy += 14) {
+          for (let gx = 0; gx < FSIDE_W; gx += 12) {
+            if ((gx + gy) % 28 < 14) {
+              ctx.fillRect(leftSideSx + gx, gy, 11, 13);
+            }
+          }
+        }
+        // Başlangıç şeridi
+        ctx.fillStyle = '#4ade80'; ctx.fillRect(leftSideSx + FSIDE_W - 4, 0, 4, H);
+        // Başlangıç yazısı
+        ctx.save();
+        ctx.translate(leftSideSx + FSIDE_W * 0.5, H * 0.5);
+        ctx.rotate(-Math.PI * 0.5);
+        ctx.font = 'bold 11px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#4ade80';
+        ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 8;
+        ctx.fillText('BAŞLANGIÇ', 0, 4); ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+      
+      // ── 4. SAĞ KALDIRIM (HEDİF) ──
+      const rightSideSx = wx2sx(FSIDE_W + FLANES * FLANE_W);
+      if (rightSideSx < W) {
+        ctx.fillStyle = '#4a2d2d';
+        ctx.fillRect(rightSideSx, 0, FSIDE_W, H);
+        // Başarı şeridi
+        const finPulse = 0.5 + Math.sin(tk * 0.15) * 0.5;
+        ctx.fillStyle = `rgba(251,191,36,${finPulse})`;
+        ctx.fillRect(rightSideSx, 0, 4, H);
+        // Bitis yazısı
+        ctx.save();
+        ctx.translate(rightSideSx + FSIDE_W * 0.5, H * 0.5);
+        ctx.rotate(Math.PI * 0.5);
+        ctx.font = 'bold 11px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 10;
+        ctx.fillText('HEDİF!', 0, 4); ctx.shadowBlur = 0;
+        ctx.restore();
+        // Başarı oku
+        const arPulse = 0.6 + Math.sin(tk * 0.18) * 0.4;
+        ctx.globalAlpha = arPulse;
+        ctx.fillStyle = '#fbbf24'; ctx.font = 'bold 18px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('▶', rightSideSx - 12, H * 0.5 + 7);
+        ctx.globalAlpha = 1;
+      }
+      
+      // ── 5. ARAÇLAR ──
+      if (this.cars) {
+        this.cars.forEach(c => {
+          const scrX = wx2sx(c.worldX);
+          // Ekran dışındaysa skip
+          if (scrX < -60 || scrX > W + 60) return;
+          
+          ctx.save();
+          ctx.translate(scrX, c.y);
+          // Araç dikey (yukarı/aşağı) // goesDown=true→ aşağı, sıfır rotasyon = aşağı yönlü
+          const rot = c.goesDown ? 0 : Math.PI;
+          ctx.rotate(rot);
+          
+          if (c.neon) { ctx.shadowColor = c.c; ctx.shadowBlur = 14; }
+          
+          // Gövde: dikey dikdörtgen (c.len=uzunluk dikey, c.wid=genişlik yatay)
+          const grad = ctx.createLinearGradient(-c.wid*0.5, -c.len*0.5, c.wid*0.5, -c.len*0.5);
+          grad.addColorStop(0, adjustBrightness(c.c, 0.65));
+          grad.addColorStop(0.5, c.c);
+          grad.addColorStop(1, adjustBrightness(c.c, 0.65));
+          ctx.fillStyle = grad;
+          rr(-c.wid*0.5, -c.len*0.5, c.wid, c.len, 4);
+          ctx.fill();
           ctx.shadowBlur = 0;
-       });
-       ctx.restore();
+          
+          // Ön cam (üst)
+          ctx.fillStyle = 'rgba(160,215,255,0.7)';
+          ctx.fillRect(-c.wid*0.33, -c.len*0.45, c.wid*0.66, c.len*0.22);
+          // Arka cam (alt)
+          ctx.fillStyle = 'rgba(110,155,210,0.45)';
+          ctx.fillRect(-c.wid*0.28, c.len*0.22, c.wid*0.56, c.len*0.14);
+          
+          // Ön farlar (üst)
+          ctx.fillStyle = '#fef3c7';
+          ctx.shadowColor = '#fde68a'; ctx.shadowBlur = c.lights ? 12 : 0;
+          ctx.fillRect(-c.wid*0.42, -c.len*0.5, c.wid*0.3, 4);
+          ctx.fillRect(c.wid*0.12, -c.len*0.5, c.wid*0.3, 4);
+          ctx.shadowBlur = 0;
+          // Arka stoplar
+          ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 5;
+          ctx.fillRect(-c.wid*0.42, c.len*0.46, c.wid*0.3, 4);
+          ctx.fillRect(c.wid*0.12, c.len*0.46, c.wid*0.3, 4);
+          ctx.shadowBlur = 0;
+          
+          if (c.type === 'truck') {
+            ctx.fillStyle = adjustBrightness(c.c, 0.75);
+            rr(-c.wid*0.46, -c.len*0.48, c.wid*0.92, c.len*0.48, 3); ctx.fill();
+          }
+          ctx.restore();
+        });
+      }
+      
+      // ── 6. COINLER ──
+      if (this._frogCoins) {
+        this._frogCoins.forEach(fc => {
+          const scrX = wx2sx(fc.worldX);
+          if (scrX < -30 || scrX > W + 30) return;
+          const sc = 1 + Math.sin(fc.anim * 2) * 0.09;
+          const flipX = Math.abs(Math.cos(fc.anim));
+          ctx.save();
+          ctx.translate(scrX, fc.y);
+          ctx.scale(flipX * sc, sc);
+          if (fc.isDiamond) {
+            ctx.shadowColor = '#06b6d4'; ctx.shadowBlur = 14;
+            ctx.fillStyle = '#06b6d4';
+            ctx.beginPath(); ctx.moveTo(0,-fc.r); ctx.lineTo(fc.r*0.8,0); ctx.lineTo(0,fc.r); ctx.lineTo(-fc.r*0.8,0); ctx.fill();
+            ctx.fillStyle = '#a5f3fc';
+            ctx.beginPath(); ctx.moveTo(0,-fc.r+3); ctx.lineTo(fc.r*0.4,0); ctx.lineTo(0,fc.r-3); ctx.lineTo(-fc.r*0.4,0); ctx.fill();
+          } else {
+            ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 10;
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath(); ctx.arc(0,0,fc.r,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#78350f'; ctx.font = 'bold 9px Outfit'; ctx.textAlign = 'center';
+            ctx.shadowBlur = 0; ctx.fillText('★',0,3);
+          }
+          ctx.restore();
+        });
+      }
+      
+      // ── 7. OYUNCU ──
+      if (pl && pl.alive) {
+        const isOnSidewalk = this._frogLane < 0;
+        ctx.save();
+        ctx.translate(W * 0.5, FPLAYER_Y);
+        // Araba yön: sağa bakan
+        ctx.shadowColor = isOnSidewalk ? '#4ade80' : '#22d3ee';
+        ctx.shadowBlur = 16;
+        const plGrad = ctx.createLinearGradient(-20, -10, 20, 10);
+        plGrad.addColorStop(0, '#4ade80'); plGrad.addColorStop(0.5, '#22c55e'); plGrad.addColorStop(1, '#15803d');
+        ctx.fillStyle = plGrad;
+        rr(-20, -12, 40, 24, 5); ctx.fill();
+        // Cam
+        ctx.fillStyle = 'rgba(200,255,240,0.7)'; ctx.fillRect(2, -8, 12, 16);
+        // Ön far
+        ctx.fillStyle = '#fef3c7'; ctx.shadowColor = '#fef3c7'; ctx.shadowBlur = 12;
+        ctx.fillRect(18, -10, 4, 6); ctx.fillRect(18, 4, 4, 6);
+        ctx.shadowBlur = 0;
+        // Emoji
+        const charEmoji = ['\uD83D\uDC24','\uD83C\uDF4E','\uD83D\uDCA7','\uD83C\uDF3F','\uD83E\uDD16','\uD83E\uDD3F','\uD83E\uDDA9','\uD83D\uDE80'][selChar] || '\uD83D\uDC24';
+        ctx.font = '11px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.shadowBlur = 0;
+        ctx.fillText(charEmoji, 0, 4);
+        ctx.restore();
+        
+        // ─ Hareket animasyonu: şerit atlama sırasında oyuncu hafifçe zıplar ─
+        if (this._frogMoving > 0) {
+          const bounce = Math.sin((12 - this._frogMoving) / 12 * Math.PI) * 6;
+          // Bir sonraki çizimi bounce ile yap — yukardaki draw zaten yapıldı, sadece efekt partikülleri
+          if (this._frogMoving === 8) spawnParts(W*0.5, FPLAYER_Y, '#4ade80', 3, 1.5);
+        }
+      }
+      
+      // ── 8. KALDIRIM / ŞERİT GÖSTERGESI (sağ kenar) ──
+      const barH = H * 0.7, barY = H * 0.15;
+      const FTOTAL = FLANES + 2; // kaldirimlar dahil
+      const progFrac = (this._frogLane + 1) / (FLANES + 1);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      rr(W - 22, barY, 14, barH, 7); ctx.fill();
+      if (progFrac > 0) {
+        const fH = barH * progFrac;
+        const bGrad = ctx.createLinearGradient(0, barY + barH - fH, 0, barY + barH);
+        bGrad.addColorStop(0, '#fbbf24'); bGrad.addColorStop(1, '#4ade80');
+        ctx.fillStyle = bGrad; ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 6;
+        rr(W - 22, barY + barH - fH, 14, fH, 7); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      // Nokta göstergeleri
+      for (let i = 0; i <= FLANES + 1; i++) {
+        const dotY = barY + barH - (i / (FLANES + 1)) * barH;
+        const isCur = i === this._frogLane + 1;
+        ctx.fillStyle = isCur ? '#4ade80' : (i === 0 ? '#4ade80' : (i === FLANES + 1 ? '#fbbf24' : 'rgba(255,255,255,0.25)'));
+        ctx.shadowColor = isCur ? '#4ade80' : 'transparent'; ctx.shadowBlur = isCur ? 8 : 0;
+        ctx.beginPath(); ctx.arc(W - 15, dotY, isCur ? 5 : 2.5, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 9px Outfit'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#fbbf24'; ctx.fillText('\uD83C\uDFC1', W - 15, barY - 8);
+      ctx.fillStyle = '#4ade80'; ctx.fillText('S', W - 15, barY + barH + 14);
+      ctx.restore();
+      
+      // ── 9. ÜST MAÇ HUD (geçiş skoru) ──
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      rr(W/2 - 55, 8, 110, 32, 8); ctx.fill();
+      ctx.font = 'bold 14px Outfit'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(`\uD83D\uDE97 ${this.score} / ${this.cfg.tgt}`, W/2, 30);
+      // Lane göstergesi
+      const laneLabel = this._frogLane < 0 ? 'KALDIRIM' : `${this._frogLane + 1}. ŞERİT`;
+      ctx.font = '10px Outfit'; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(laneLabel, W/2, 50);
+      ctx.restore();
+      
+      // ── 10. TUTORIAL OVERLAY ──
+      if (this._frogTutorial !== undefined && this._frogTutorial > 0) {
+        const tA = Math.min(1, this._frogTutorial / 50) * (this._frogTutorial > 50 ? 1 : this._frogTutorial / 50);
+        ctx.save();
+        ctx.globalAlpha = tA * 0.88;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0,0,W,H);
+        ctx.globalAlpha = tA;
+        const pulse = 0.7 + Math.sin(tk * 0.14) * 0.3;
+        const pW = W/2 - 10;
+        // SOL PANEL
+        ctx.fillStyle = 'rgba(239,68,68,0.13)'; ctx.strokeStyle = 'rgba(239,68,68,0.55)'; ctx.lineWidth = 2;
+        rr(4, H*0.28, pW, H*0.44, 12); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.globalAlpha = tA * pulse;
+        ctx.font = 'bold 46px serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#f87171'; ctx.shadowColor='#ef4444'; ctx.shadowBlur=18;
+        ctx.fillText('\u25C0', pW/2 + Math.sin(tk*0.14)*8, H*0.53);
+        ctx.shadowBlur=0; ctx.font='bold 13px Outfit'; ctx.fillStyle='#fca5a5';
+        ctx.fillText('GERİ', pW/2, H*0.35);
+        ctx.font='11px Outfit'; ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.fillText('Sol yarıya dokun', pW/2, H*0.67); ctx.restore();
+        // SAĞ PANEL
+        ctx.fillStyle = 'rgba(74,222,128,0.13)'; ctx.strokeStyle = 'rgba(74,222,128,0.55)'; ctx.lineWidth = 2;
+        rr(W/2+6, H*0.28, pW, H*0.44, 12); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.globalAlpha = tA * pulse;
+        ctx.font = 'bold 46px serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#4ade80'; ctx.shadowColor='#22c55e'; ctx.shadowBlur=18;
+        ctx.fillText('\u25B6', W/2 + pW/2 + Math.sin(tk*0.14+Math.PI)*8, H*0.53);
+        ctx.shadowBlur=0; ctx.font='bold 13px Outfit'; ctx.fillStyle='#86efac';
+        ctx.fillText('İLERİ', W/2+pW/2, H*0.35);
+        ctx.font='11px Outfit'; ctx.fillStyle='rgba(255,255,255,0.6)';
+        ctx.fillText('Sağ yarıya dokun', W/2+pW/2, H*0.67); ctx.restore();
+        // Orta çizgi
+        ctx.strokeStyle='rgba(251,191,36,0.7)'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+        ctx.beginPath(); ctx.moveTo(W/2,H*0.22); ctx.lineTo(W/2,H*0.76); ctx.stroke(); ctx.setLineDash([]);
+        // Başlık
+        ctx.font='bold 18px Outfit'; ctx.textAlign='center'; ctx.fillStyle='#fbbf24';
+        ctx.shadowColor='#f59e0b'; ctx.shadowBlur=12;
+        ctx.fillText('\uD83D\uDE97 TÜM ŞERİTLERİ GEÇ!', W/2, H*0.22);
+        ctx.shadowBlur=0; ctx.font='12px Outfit'; ctx.fillStyle='rgba(255,255,255,0.45)';
+        ctx.fillText(`${this.cfg.tgt} kez karşıya geç → sonuç bozar`, W/2, H*0.76);
+        ctx.fillText('YUKARI/AŞ. trafikten kaç!', W/2, H*0.79);
+        ctx.restore();
+      }
+      // ── 11. SUREKLI HATIRLATICI ──
+      if (!this._frogTutorial) {
+        ctx.save();
+        const ra = 0.32 + Math.sin(tk*0.05)*0.12;
+        ctx.globalAlpha = ra;
+        ctx.font='bold 10px Outfit'; ctx.textAlign='center';
+        ctx.fillStyle='#f87171'; ctx.fillText('\u25C4 GERİ', W*0.18, H - 28);
+        ctx.fillStyle='#4ade80'; ctx.fillText('İLERİ \u25BA', W*0.82, H - 28);
+        ctx.strokeStyle='rgba(251,191,36,0.12)'; ctx.lineWidth=1; ctx.setLineDash([4,8]);
+        ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
+        ctx.restore();
+      }
+      ctx.restore(); // main frogger save
     }
+    // ── rest of draw continues below ──
 
-    if (this.player) this.player.draw();
+    if (this.player && this.cfg.mode !== 'frogger') this.player.draw();
+
+
+    if (this.player && this.cfg.mode !== 'frogger') this.player.draw();
     drawParts();
 
     // HALLOWEEN: Darkness overlay (Flashlight effect)
@@ -1797,7 +2299,7 @@ const G = {
     }
 
     // Revive wait hint
-    if (this.state === ST.PLAY && this.isReviveWait) {
+    if (this.state === ST.PLAY && this.isReviveWait && (!this.cfg || this.cfg.mode !== 'frogger')) {
         ctx.save();
         const pulse = 0.6 + Math.sin(this.tick * 0.1) * 0.4;
         ctx.globalAlpha = pulse;
