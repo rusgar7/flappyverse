@@ -248,7 +248,7 @@ const LEVELS = [
   // B4 — Karanlık Sır (Cadılar Bayramı): Görme zorluğu + karanlık flaşör efekti
   {
     mode:'halloween', gap:285, iv:128, tgt:25, cv:3, xpR:350, grav:.32, jf:-8.0, spdMul:0.90,
-    wind:0, movObs:true, darkness:true, autoFlip:0, obsStyle:'digital',
+    wind:0, movObs:true, darkness:true, autoFlip:0, obsStyle:'spooky',
     sky:['#04020a','#000000','#0f0514'], gc:['#110022','#090011','#040008'],
     pc:['#9333ea','#b91c1c','#c026d3','#fbbf24','#000000'], stars:0
   },
@@ -560,9 +560,9 @@ class Obstacle {
     this.lv = lv; this.style = lv.obsStyle || 'pipe';
     this.isOcean = this.style === 'coral';
     this.isCyber = this.style === 'laser';
-    this.isTutorial = this.style === 'platform';
     this.isDigital = this.style === 'digital';
     this.isWind = this.style === 'wind_platform';
+    this.isSpooky = this.style === 'spooky';
     this.yTk = Math.random() * Math.PI * 2;
     this.yAmp = lv.movObs ? (18 + Math.random() * 24) : 0;
     const mn = PING + 10, mx = H - GROUND_H - this.gap - PING - 10;
@@ -891,6 +891,107 @@ class Obstacle {
     if (this.coins) { this.coins.forEach(c => { if (c) c.draw(); }); }
     ctx.restore();
   }
+  _drawSpooky() {
+    const tk = G.tick;
+    const c0 = '#1e1b4b'; // dark purple
+    const c1 = '#4c1d95'; // purple rim
+    // Top obstacle (stalactite / vine) body
+    ctx.save();
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 8;
+    ctx.fillStyle = c0; ctx.strokeStyle = c1; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(this.x, 0); ctx.lineTo(this.x + OW, 0);
+    ctx.lineTo(this.x + OW - 5, this.topH - 10);
+    ctx.lineTo(this.x + OW/2, this.topH);
+    ctx.lineTo(this.x + 5, this.topH - 10);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    // Bottom obstacle (stalagmite / vine) body
+    ctx.save();
+    ctx.shadowColor = '#000'; ctx.shadowBlur = 8;
+    ctx.fillStyle = c0; ctx.strokeStyle = c1; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(this.x, H); ctx.lineTo(this.x + OW, H);
+    ctx.lineTo(this.x + OW - 5, this.botY + 10);
+    ctx.lineTo(this.x + OW/2, this.botY);
+    ctx.lineTo(this.x + 5, this.botY + 10);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawSpookyGlow() {
+    const tk = G.tick;
+    // Top obstacle glowing path
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(this.x, 0); ctx.lineTo(this.x + OW, 0);
+    ctx.lineTo(this.x + OW - 5, this.topH - 10);
+    ctx.lineTo(this.x + OW/2, this.topH);
+    ctx.lineTo(this.x + 5, this.topH - 10);
+    ctx.closePath();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.setLineDash([40, 50]);
+    ctx.lineDashOffset = -tk * 0.8; 
+
+    // Outer glow (ultra bright purple bloom)
+    ctx.shadowColor = '#d946ef'; ctx.shadowBlur = 35;
+    ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 5;
+    ctx.stroke();
+
+    // Inner bright core (white-hot center)
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = '#fdf4ff'; ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // A glowing eye on the obstacle
+    const eyey = this.topH - 30;
+    if (eyey > 20) {
+       const blink = Math.sin(tk*0.1 + this.x) > 0.8;
+       ctx.fillStyle = blink ? '#c026d3' : '#fbbf24'; 
+       ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = blink ? 2 : 12;
+       ctx.beginPath(); ctx.ellipse(this.x + OW/2, eyey, 6, 10, 0, 0, Math.PI*2); ctx.fill();
+       ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
+       ctx.beginPath(); ctx.ellipse(this.x + OW/2, eyey, 2, 7, 0, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Bottom obstacle glowing path
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(this.x, H); ctx.lineTo(this.x + OW, H);
+    ctx.lineTo(this.x + OW - 5, this.botY + 10);
+    ctx.lineTo(this.x + OW/2, this.botY);
+    ctx.lineTo(this.x + 5, this.botY + 10);
+    ctx.closePath();
+    
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.setLineDash([40, 50]);
+    ctx.lineDashOffset = -tk * 0.8;
+
+    // Outer glow (ultra bright purple bloom)
+    ctx.shadowColor = '#d946ef'; ctx.shadowBlur = 35;
+    ctx.strokeStyle = '#d946ef'; ctx.lineWidth = 5;
+    ctx.stroke();
+
+    // Inner bright core (white-hot center)
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = '#fdf4ff'; ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+    
+    // Floating cobweb/spider in gap
+    if (Math.sin(tk*0.03 + this.x) > 0.6) {
+       ctx.save();
+       ctx.fillStyle = 'rgba(255,255,255,0.4)';
+       ctx.shadowColor = '#fff'; ctx.shadowBlur = 10;
+       ctx.font = '24px serif';
+       ctx.fillText('🕸️', this.x + OW/2 - 12, this.topH + this.gap/2 + Math.sin(tk*0.05)*10);
+       ctx.restore();
+    }
+  }
   _drawCoral() {
     const bx = this.x - 5, tw = OW + 10, tk = G.tick;
     if (this._ocv) ctx.drawImage(this._ocv, bx, 0);
@@ -941,6 +1042,7 @@ class Obstacle {
   draw() {
     if (this.isOcean) { this._drawCoral(); }
     else if (this.isCyber) { this._drawCyberLaser(); } // coins drawn inside _drawCyberLaser
+    else if (this.isSpooky) { this._drawSpooky(); }
     else if (this.isDigital) { this._drawDigital(); }
     else if (this.isTutorial || this.isWind) { this._drawPlatform(this.isWind); }
     else { // pipe (classic / B7 / flappy)
@@ -1159,6 +1261,33 @@ function drawSky(lv) {
       ctx.fillStyle = '#4ade80'; ctx.globalAlpha = 0.3;
       ctx.beginPath(); ctx.ellipse(lx - 7, ly + 3, 4, 2, 0.4, 0, Math.PI*2); ctx.fill();
       ctx.globalAlpha = 0.45;
+    }
+    ctx.restore();
+  }
+  // Halloween spooky background elements
+  if (lv.mode === 'halloween') {
+    const tk = G.tick;
+    ctx.save();
+    // Creepy pulsing eyes in the dark
+    for (let i = 0; i < 5; i++) {
+       const eyex = ((i * 123 + Math.sin(tk*0.01 + i)*80) % W + W) % W;
+       const eyey = 50 + (i * 77 + Math.cos(tk*0.015 + i)*50) % (H - GROUND_H - 120);
+       const blink = Math.sin(tk*(0.03 + i*0.01) + i*1.5);
+       if (blink > 0.6) {
+          ctx.globalAlpha = (blink - 0.6) * 2.5; 
+          ctx.fillStyle = i%2===0 ? '#ff0050' : '#fbbf24';
+          ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
+          ctx.beginPath(); ctx.ellipse(eyex, eyey, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(eyex + 18, eyey, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+       }
+    }
+    // Floating "souls"
+    ctx.globalAlpha = 0.15;
+    for (let i = 0; i < 8; i++) {
+        const sx = ((i * 89 - tk * (0.8 + i*0.1)) % W + W) % W;
+        const sy = 100 + (i * 61 + Math.sin(tk*0.03 + i)*60) % (H - GROUND_H - 150);
+        ctx.fillStyle = '#a78bfa'; ctx.shadowColor = '#c084fc'; ctx.shadowBlur = 20;
+        ctx.beginPath(); ctx.arc(sx, sy, 8 + Math.sin(tk*0.1+i)*3, 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
@@ -2236,22 +2365,32 @@ const G = {
     drawParts();
 
     // HALLOWEEN: Darkness overlay (Flashlight effect)
-    if (this.cfg.darkness) {
+    if (this.cfg.darkness && this.cfg.mode !== 'frogger') {
         ctx.save();
-        if (isMobile) {
-            ctx.fillStyle = 'rgba(2,0,10,0.93)';
-            ctx.beginPath();
-            ctx.rect(0,0,W,H);
-            ctx.arc(this.player.x, this.player.y, 90, 0, Math.PI*2, true);
-            ctx.fill();
-        } else {
-            const rad = ctx.createRadialGradient(this.player.x, this.player.y, 10, this.player.x, this.player.y, 170);
-            rad.addColorStop(0, 'rgba(0,0,0,0)');
-            rad.addColorStop(1, 'rgba(2,0,10,0.96)');
-            ctx.fillStyle = rad;
-            ctx.fillRect(0,0,W,H);
-        }
+        // Meşale (Flashlight) effect allowing to see slightly ahead
+        // Player's crk (rotation) slightly shifts the light forward 
+        const px = this.player.x + 80 + Math.max(0, this.player.crk * 20); 
+        const py = this.player.y;
+        
+        const rad = ctx.createRadialGradient(
+            px + 40, py, 60,   // light center is big and pushed well ahead of bird
+            px, py, 450        // hugely expanded radius to see incoming pipes easily
+        );
+        rad.addColorStop(0, 'rgba(255, 190, 80, 0.0)');  // fully transparent center
+        rad.addColorStop(0.4, 'rgba(0, 0, 0, 0.05)');    // safe visible area stretches far
+        rad.addColorStop(1, 'rgba(4, 2, 16, 0.78)');     // dark edges are much lighter (78% vs 92%)
+
+        
+        ctx.fillStyle = rad;
+        ctx.fillRect(0, 0, W, H);
         ctx.restore();
+        
+        // NOW draw glowing parts so they shine piercingly OVER the dark overlay
+        if (this.obs) {
+            this.obs.forEach(o => {
+                if (o.isSpooky && o._drawSpookyGlow) o._drawSpookyGlow();
+            });
+        }
     }
     
     // ── TUTORIAL overlay (B1) ──
