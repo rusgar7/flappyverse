@@ -22,8 +22,8 @@ const LANG = {
     locked: '🔒 Kilitli', unlock: 'Önceki bölümü bitir', buy: 'Satın Al', equip: 'Kuşan', equipped: '✔ Seçili',
     gameover: 'Oyun Bitti!', victory: 'Bölüm Tamam!', next: 'Sonraki →', retry: 'Tekrar', toMenu: 'Menü',
     pipes: 'boru', engel: 'engel', lazer: 'lazer', dalga: 'dalga', 'time': 'Süre', xpEarned: 'XP Kazanıldı', newRecord: 'YENİ REKOR!', congratz: 'Tebrikler! 🏆', allDone: 'Tüm bölümleri bitirdin!', paused: '⏸ DURAKLATILDI',
-    lv: ['🌿 Klasik Nostalji', '💨 Rüzgarlı Vadi', '🌊 Derin Deniz', '🎃 Karanlık Sır', '⚡ Glitch Vakası', '🌆 Siber Şehir', '🚀 Yörüngeden Kaçış', '🚗 Ölümcül Otoyol', '🏆 Dereceli'],
-    lvsub: ['Öğretici — temel kontroller', 'Rüzgar + sallanan platformlar', 'Yüzme fiziği — mercan tünelleri', 'Karanlık flaşör — görme zorluğu!', 'Ters yerçekimi — geri sayım!', 'Hız 2x — Lazer Bariyerler', 'Sıfır Yerçekimi — 360° itiş', 'Kurbağa Modu! Şerit atla!', '🏆 Sonsuz Skor & Küresel Sıralama'],
+    lv: ['🌿 Klasik Nostalji', '💨 Rüzgarlı Vadi', '🎃 Karanlık Sır', '🌊 Derin Deniz', '🌆 Siber Şehir', '🚗 Ölümcül Otoyol', '🚀 Nasa\'dan Kaçış', '⚡ Lazer Tuzağı', '🏆 Dereceli'],
+    lvsub: ['Öğretici — temel kontroller', 'Rüzgar + sallanan platformlar', 'Karanlık flaşör — görme zorluğu!', 'Yüzme fiziği — mercan tünelleri', 'Ters yerçekimi — dijital kaos!', 'Kurbağa Modu! Şerit atla!', 'Sıfır Yerçekimi — Nasa\'dan kaç!', 'Hız 2x — Lazer Bariyerler', '🏆 Sonsuz Skor & Küresel Sıralama'],
     charName: ['Klasik Piksel', 'Kırmızı Piksel', 'Mavi Piksel', 'Yeşil Piksel', 'Neon Sayborg', 'Batiskaf Dalgıç', 'Kuantum Baykuş', 'Uzay Şahini'],
     charDesc: ['Standart fizik.', 'Standart fizik.', 'Standart fizik.', 'Standart fizik.', 'Yerçekimi %15 azdır.', 'Hitbox %15 ufaktır.', 'Altın çeker ve 1.5x verir.', 'Zırhı vardır, 1 kez ölmez!'],
     hint1: 'Dokun / Boşluk = Zıpla / Uç', hint2: 'Yerçekimini tersine çevirmek için dokun!', hint3: 'Koşucu modda atla!',
@@ -35,8 +35,8 @@ const LANG = {
     locked: '🔒 Locked', unlock: 'Complete previous level', buy: 'Buy', equip: 'Equip', equipped: '✔ Equipped',
     gameover: 'Game Over!', victory: 'Level Clear!', next: 'Next →', retry: 'Retry', toMenu: 'Menu',
     pipes: 'pipes', engel: 'obstacle', lazer: 'laser', dalga: 'wave', 'time': 'Time', xpEarned: 'XP Earned', newRecord: 'NEW RECORD!', congratz: 'Congratulations! 🏆', allDone: 'You completed all levels!', paused: '⏸ PAUSED',
-    lv: ['🌿 Classic Nostalgia', '💨 Windy Valley', '🌊 Deep Sea', '🎃 Dark Secret', '⚡ The Glitch', '🌆 Cyber City', '🚀 Orbital Escape', '🚗 Deadly Highway', '🏆 Ranked'],
-    lvsub: ['Tutorial — basic controls', 'Wind gusts + swinging platforms', 'Buoyancy physics — coral tunnels', 'Flashlight darkness!', 'Gravity flip countdown!', 'Speed 2x — laser barriers', 'Zero-G — 360° thrust', 'Frogger mode! Lane hop!', '🏆 Infinite score & global leaderboard'],
+    lv: ['🌿 Classic Nostalgia', '💨 Windy Valley', '🎃 Dark Secret', '🌊 Deep Sea', '🌆 Cyber City', '🚗 Deadly Highway', '🚀 Escape from NASA', '⚡ Laser Trap', '🏆 Ranked'],
+    lvsub: ['Tutorial — basic controls', 'Wind gusts + swinging platforms', 'Flashlight darkness!', 'Buoyancy physics — coral tunnels', 'Gravity flip — digital chaos!', 'Frogger mode! Lane hop!', 'Zero-G — Escape NASA!', 'Speed 2x — laser barriers', '🏆 Infinite score & global leaderboard'],
     charName: ['Classic Pixel', 'Red Pixel', 'Blue Pixel', 'Green Pixel', 'Neon Cyborg', 'Bathyscaphe Diver', 'Quantum Owl', 'Space Falcon'],
     charDesc: ['Standard bird.', 'Standard bird.', 'Standard bird.', 'Standard bird.', '15% lower gravity.', '15% smaller hitbox.', 'Magnets coins, 1.5x.', 'Armor, survives 1 hit!'],
     hint1: 'Tap / Space = Jump / Fly', hint2: 'Tap to flip gravity!', hint3: 'Jump in runner mode!',
@@ -86,6 +86,16 @@ var unlockedLvs = S.g('unlocked', [true, false, false, false, false, false, fals
 var bestTimes = S.g('btimes', [0, 0, 0, 0, 0, 0, 0, 0, 0]), lastTimes = S.g('ltimes', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
 var playerXP = S.g('xp', 0), playerLv = S.g('plv', 1);
 var devMode = S.g('devmode', false);
+// Veri migrasyonu: level sıralaması değiştiğinde eski kayıtları sıfırla
+const SAVE_VERSION = 2;
+if (S.g('save_ver', 0) < SAVE_VERSION) {
+  unlockedLvs = [true, false, false, false, false, false, false, false, false];
+  bestTimes = [0,0,0,0,0,0,0,0,0];
+  lastTimes = [0,0,0,0,0,0,0,0,0];
+  compCounts = [0,0,0,0,0,0,0,0,0];
+  S.s('unlocked', unlockedLvs); S.s('btimes', bestTimes); S.s('ltimes', lastTimes); S.s('compc', compCounts);
+  S.s('save_ver', SAVE_VERSION);
+}
 
 let devCode = '';
 const DEV_SECRET = 'geliştirici';
@@ -134,6 +144,52 @@ function applyDevMode() {
   if (devMode) { unlockedLvs = [true, true, true, true, true, true, true, true, true]; LEVELS.forEach(l => l.unlocked = true); }
 }
 const XP_PER_LV = 500;
+
+/* ── DEVICE IDENTITY ── */
+function generateDeviceId() {
+  const k = '_fv_did';
+  let id = localStorage.getItem(k);
+  if (id) return id;
+  const sig = [
+    navigator.userAgent, navigator.language,
+    screen.width + ',' + screen.height + ',' + screen.colorDepth,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency || 0,
+    navigator.deviceMemory || 0,
+    navigator.platform || '',
+    navigator.maxTouchPoints || 0
+  ].join('||');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < sig.length; i++) { h ^= sig.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  id = 'fv_' + h.toString(16).padStart(8, '0') + '_' + Date.now().toString(36).slice(-5);
+  localStorage.setItem(k, id);
+  return id;
+}
+const myDeviceId = generateDeviceId();
+let myDisplayName = S.g('display_name', '');
+
+/* ── RANK TİERS ── */
+const RANK_TIERS = [
+  { name: 'Bronz',   min: 0,   color: '#a16207', bg: 'rgba(161,98,7,0.25)',   emoji: '🥉', border: '#ca8a04' },
+  { name: 'Gümüş',  min: 10,  color: '#94a3b8', bg: 'rgba(148,163,184,0.2)', emoji: '🥈', border: '#cbd5e1' },
+  { name: 'Altın',  min: 25,  color: '#fbbf24', bg: 'rgba(251,191,36,0.2)',  emoji: '🏅', border: '#f59e0b' },
+  { name: 'Platin', min: 50,  color: '#22d3ee', bg: 'rgba(34,211,238,0.2)',  emoji: '💠', border: '#06b6d4' },
+  { name: 'Elmas',  min: 100, color: '#a78bfa', bg: 'rgba(167,139,250,0.2)', emoji: '💎', border: '#8b5cf6' },
+  { name: 'Usta',   min: 200, color: '#f472b6', bg: 'rgba(244,114,182,0.2)', emoji: '⭐', border: '#ec4899' },
+  { name: 'Efsane', min: 500, color: '#fb923c', bg: 'rgba(251,146,60,0.25)', emoji: '👑', border: '#f97316' },
+];
+function getRankTier(score) {
+  for (let i = RANK_TIERS.length - 1; i >= 0; i--) {
+    if (score >= RANK_TIERS[i].min) return RANK_TIERS[i];
+  }
+  return RANK_TIERS[0];
+}
+function getNextRankTier(score) {
+  for (let i = 0; i < RANK_TIERS.length; i++) {
+    if (score < RANK_TIERS[i].min) return RANK_TIERS[i];
+  }
+  return null; // max rank
+}
 
 /* ── LEADERBOARD (B7 Dereceli — Firebase Küresel Skor) ── */
 let leaderboard = S.g('lb', []); // [{name, score, date}] — yerel önbellek
@@ -238,19 +294,19 @@ const LEVELS = [
     sky: ['#e0f2fe', '#bae6fd', '#7dd3fc'], gc: ['#6b7280', '#4b5563', '#374151'],
     pc: ['#6b7280', '#9ca3af', '#4b5563', '#d1d5db', '#f3f4f6'], stars: 8
   },
-  // B3 — Derin Deniz: buoyancy, mercan tünelleri + denizanaları
-  {
-    mode: 'buoy', gap: 275, iv: 135, tgt: 25, cv: 3, xpR: 280, grav: 0, jf: 0, spdMul: 0.82,
-    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'coral',
-    sky: ['#042f54', '#0c4a6e', '#0369a1'], gc: ['#042f54', '#0c3256', '#021428'],
-    pc: ['#0f766e', '#0d9488', '#134e4a', '#14b8a6', '#99f6e4'], stars: 0
-  },
-  // B4 — Karanlık Sır (Cadılar Bayramı): Görme zorluğu + karanlık flaşör efekti
+  // B3 — Karanlık Sır (Cadılar Bayramı): Görme zorluğu + karanlık flaşör efekti
   {
     mode: 'halloween', gap: 285, iv: 128, tgt: 25, cv: 3, xpR: 350, grav: .32, jf: -8.0, spdMul: 0.90,
     wind: 0, movObs: true, darkness: true, autoFlip: 0, obsStyle: 'spooky',
     sky: ['#04020a', '#000000', '#0f0514'], gc: ['#110022', '#090011', '#040008'],
     pc: ['#9333ea', '#b91c1c', '#c026d3', '#fbbf24', '#000000'], stars: 0
+  },
+  // B4 — Derin Deniz: buoyancy, mercan tünelleri + denizanaları
+  {
+    mode: 'buoy', gap: 275, iv: 135, tgt: 25, cv: 3, xpR: 280, grav: 0, jf: 0, spdMul: 0.82,
+    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'coral',
+    sky: ['#042f54', '#0c4a6e', '#0369a1'], gc: ['#042f54', '#0c3256', '#021428'],
+    pc: ['#0f766e', '#0d9488', '#134e4a', '#14b8a6', '#99f6e4'], stars: 0
   },
   // B5 — The Glitch: Ters yerçekimi geri sayım vs
   {
@@ -259,21 +315,7 @@ const LEVELS = [
     sky: ['#1e1b4b', '#312e81', '#1e1b4b'], gc: ['#020617', '#0f172a', '#020617'],
     pc: ['#f43f5e', '#e11d48', '#be123c', '#fb7185', '#fda4af'], stars: 0
   },
-  // B6 — Siber Şehir: Lazer bariyerler + altın toplama
-  {
-    mode: 'cyber', gap: 270, iv: 105, tgt: 20, cv: 5, xpR: 220, grav: .38, jf: -8.5, spdMul: 1.55,
-    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'laser', cyberCoins: true,
-    sky: ['#0f0f1a', '#1a0533', '#0d0d2b'], gc: ['#1e1b4b', '#312e81', '#0d0b1e'],
-    pc: ['#7c3aed', '#6d28d9', '#4c1d95', '#a78bfa', '#ddd6fe'], stars: 30
-  },
-  // B7 — Yörüngeden Kaçış: Zero-G, füzeler + meteorlar
-  {
-    mode: 'space', gap: 310, iv: 125, tgt: 15, cv: 4, xpR: 500, grav: 0, jf: 0, spdMul: 0,
-    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'space',
-    sky: ['#020617', '#0c0a1e', '#030014'], gc: ['#0c0a1e', '#020617', '#000010'],
-    pc: ['#6366f1', '#4338ca', '#312e81', '#818cf8', '#c7d2fe'], stars: 60
-  },
-  // B8 — Ölümcül Otoyol: Kuşbakışı di̇key şerrit + yatay scroll
+  // B6 — Ölümcül Otoyol: Kuşbakışı di̇key şerrit + yatay scroll
   {
     mode: 'frogger', lanes: 12, tgt: 15, cv: 3, xpR: 500, grav: 0, jf: 0, spdMul: 0,
     wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'car', topDown: true,
@@ -282,6 +324,20 @@ const LEVELS = [
     carColors: ['#ef4444', '#f97316', '#3b82f6', '#06b6d4', '#10b981', '#a855f7', '#ec4899', '#fbbf24', '#64748b', '#f8fafc'],
     // Di̇key şerit hız çarpanları (sola→sağa artan tehlike)
     laneSpeedMul: [0.8, 1.0, 1.2, 1.4, 1.7, 2.0, 2.3, 2.6, 3.0, 3.4, 3.9, 4.5]
+  },
+  // B7 — Yörüngeden Kaçış: Zero-G, füzeler + meteorlar
+  {
+    mode: 'space', gap: 310, iv: 125, tgt: 15, cv: 4, xpR: 500, grav: 0, jf: 0, spdMul: 0,
+    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'space',
+    sky: ['#020617', '#0c0a1e', '#030014'], gc: ['#0c0a1e', '#020617', '#000010'],
+    pc: ['#6366f1', '#4338ca', '#312e81', '#818cf8', '#c7d2fe'], stars: 60
+  },
+  // B8 — Siber Şehir: Lazer bariyerler + altın toplama
+  {
+    mode: 'cyber', gap: 270, iv: 105, tgt: 20, cv: 5, xpR: 220, grav: .38, jf: -8.5, spdMul: 1.55,
+    wind: 0, movObs: false, darkness: false, autoFlip: 0, obsStyle: 'laser', cyberCoins: true,
+    sky: ['#0f0f1a', '#1a0533', '#0d0d2b'], gc: ['#1e1b4b', '#312e81', '#0d0b1e'],
+    pc: ['#7c3aed', '#6d28d9', '#4c1d95', '#a78bfa', '#ddd6fe'], stars: 30
   },
   // B9 — Saf Flappy (Dereceli): SONSUZ skor saldırısı
   {
@@ -392,6 +448,9 @@ class Cloud {
 /* ── PARTICLES ── */
 const PARTS = [];
 function spawnParts(x, y, col, n = 10, speed = 4) {
+  const MAX_PARTS = 120;
+  if (PARTS.length >= MAX_PARTS) return;
+  n = Math.min(n, MAX_PARTS - PARTS.length);
   for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * speed; PARTS.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5, col, r: 2 + Math.random() * 5, life: 1, dec: .03 + Math.random() * .04 }); }
 }
 function updateParts() { for (let i = PARTS.length - 1; i >= 0; i--) { const p = PARTS[i]; p.x += p.vx; p.y += p.vy; p.vy += .1; p.life -= p.dec; if (p.life <= 0) PARTS.splice(i, 1); } }
@@ -563,6 +622,7 @@ class Obstacle {
     this.isDigital = this.style === 'digital';
     this.isWind = this.style === 'wind_platform';
     this.isSpooky = this.style === 'spooky';
+    this.isTutorial = this.style === 'platform';
     this.yTk = Math.random() * Math.PI * 2;
     this.yAmp = lv.movObs ? (18 + Math.random() * 24) : 0;
     const mn = PING + 10, mx = H - GROUND_H - this.gap - PING - 10;
@@ -1226,27 +1286,31 @@ function drawGround(off, gc) {
   ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2; const sp = 38, st = ((-off) % sp + sp) % sp;
   for (let x = st - sp; x < W + sp; x += sp) { ctx.beginPath(); ctx.moveTo(x, H - GROUND_H + 5); ctx.lineTo(x - 18, H); ctx.stroke(); }
 }
+let _skyGradCache = null, _skyGradKey = '';
 function drawSky(lv) {
-  const g = ctx.createLinearGradient(0, 0, 0, H - GROUND_H);
-  // Flappy modu: faza göre dinamik sky rengi
-  if (lv.mode === 'flappy' && G.state === ST.PLAY) {
-    const phase = G.flappyPhase;
-    const t = G.flappyPhaseT || 0;
-    const PHASE_SKIES = [
-      ['#56cfcd', '#4db8b6', '#38aaaa'],  // 0: classic
-      ['#e0f2fe', '#93c5fd', '#3b82f6'],  // 1: wind/blue
-      ['#0f0f1a', '#1a0533', '#0d0d2b'],  // 2: dark neon
-      ['#1a001a', '#2d0033', '#0d000d'],  // 3: glitch purple
-      ['#020617', '#0c0a1e', '#030014'],  // 4: space
-      ['#042f54', '#0c4a6e', '#0369a1'],  // 5: ocean
-      ['#0f0b1e', '#1e0533', '#2d0b4e'],  // 6: glitch dark
-    ];
-    const sky = PHASE_SKIES[phase];
-    g.addColorStop(0, sky[0]); g.addColorStop(.5, sky[1]); g.addColorStop(1, sky[2]);
-  } else {
-    g.addColorStop(0, lv.sky[0]); g.addColorStop(.5, lv.sky[1]); g.addColorStop(1, lv.sky[2]);
+  const skyKey = (lv.mode === 'flappy' && G.state === ST.PLAY) ? 'flappy_' + (G.flappyPhase||0) : lv.sky.join(',');
+  if (_skyGradKey !== skyKey || !_skyGradCache) {
+    _skyGradCache = ctx.createLinearGradient(0, 0, 0, H - GROUND_H);
+    _skyGradKey = skyKey;
+    // Flappy modu: faza göre dinamik sky rengi
+    if (lv.mode === 'flappy' && G.state === ST.PLAY) {
+      const phase = G.flappyPhase;
+      const PHASE_SKIES = [
+        ['#56cfcd', '#4db8b6', '#38aaaa'],  // 0: classic
+        ['#e0f2fe', '#93c5fd', '#3b82f6'],  // 1: wind/blue
+        ['#0f0f1a', '#1a0533', '#0d0d2b'],  // 2: dark neon
+        ['#1a001a', '#2d0033', '#0d000d'],  // 3: glitch purple
+        ['#020617', '#0c0a1e', '#030014'],  // 4: space
+        ['#042f54', '#0c4a6e', '#0369a1'],  // 5: ocean
+        ['#0f0b1e', '#1e0533', '#2d0b4e'],  // 6: glitch dark
+      ];
+      const sky = PHASE_SKIES[phase];
+      _skyGradCache.addColorStop(0, sky[0]); _skyGradCache.addColorStop(.5, sky[1]); _skyGradCache.addColorStop(1, sky[2]);
+    } else {
+      _skyGradCache.addColorStop(0, lv.sky[0]); _skyGradCache.addColorStop(.5, lv.sky[1]); _skyGradCache.addColorStop(1, lv.sky[2]);
+    }
   }
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H - GROUND_H);
+  ctx.fillStyle = _skyGradCache; ctx.fillRect(0, 0, W, H - GROUND_H);
   // E5 FIX: Wind level visual leaf/line particles
   if (lv.mode === 'wind') {
     const tk = G.tick;
@@ -1407,7 +1471,7 @@ const G = {
   _checkDamage(pl) {
     if (pl.invulnerable > 0) return;
     if (pl.ch.type === 'falcon' && pl.armor) {
-      pl.armor = false; pl.ch = CHARS[0]; pl.invulnerable = 60;
+      pl.armor = false; pl.invulnerable = 60;
       sfxSwsh(); spawnParts(pl.x, pl.y, '#cbd5e1', 35, 7);
       return;
     }
@@ -2359,9 +2423,6 @@ const G = {
     // ── rest of draw continues below ──
 
     if (this.player && this.cfg.mode !== 'frogger') this.player.draw();
-
-
-    if (this.player && this.cfg.mode !== 'frogger') this.player.draw();
     drawParts();
 
     // HALLOWEEN: Darkness overlay (Flashlight effect)
@@ -3107,7 +3168,17 @@ const G = {
       this.tap(cx, cy);
     }
   },
-  loop() { this.update(); this.draw(); requestAnimationFrame(() => this.loop()); }
+  loop(ts = 0) {
+    requestAnimationFrame(t => this.loop(t));
+    if (!this._lt) { this._lt = ts; return; }
+    const elapsed = Math.min(ts - this._lt, 50);
+    const STEP = 1000 / 60;
+    this._acc = (this._acc || 0) + elapsed;
+    let steps = 0;
+    while (this._acc >= STEP && steps < 3) { this.update(); this._acc -= STEP; steps++; }
+    this._lt = ts;
+    this.draw();
+  }
 };
 
 /* ── INPUT ── */
@@ -3136,4 +3207,4 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && G.s
 
 
 applyDevMode(); // restore dev unlocks on page load
-G.init(); G.loop();
+G.init(); requestAnimationFrame(t => G.loop(t));
