@@ -118,7 +118,10 @@ const createOverlay = () => {
               <div class="glass-panel !max-w-none w-full h-full !rounded-[28px] !p-5 flex flex-col relative z-10 border border-white/20 shadow-2xl bg-slate-900/70 backdrop-blur-3xl">
                   <div class="w-full flex justify-between items-start z-10">
                       <button class="k-btn k-btn-dark !w-auto !py-1.5 !px-4 !text-sm border-white/20 bg-black/40" onclick="window.uiC('back')">← Geri</button>
-                      <button class="ui-btn-mute k-btn k-btn-circle !w-10 !h-10 !p-0 shadow-lg text-lg border-white/20 bg-black/40" onclick="window.uiClickMute()">🔊</button>
+                      <div class="flex gap-2 items-center">
+                          <button id="ui-lang-btn" class="k-btn k-btn-dark !w-auto !py-1 !px-3 !text-xs border-white/20 bg-black/40 font-bold" onclick="window.uiC('lang')" title="Dil / Language">🌐 TR</button>
+                          <button class="ui-btn-mute k-btn k-btn-circle !w-10 !h-10 !p-0 shadow-lg text-lg border-white/20 bg-black/40" onclick="window.uiClickMute()">🔊</button>
+                      </div>
                   </div>
                   <h2 class="text-2xl font-black text-center text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 mt-4 tracking-wider">PROFİL</h2>
                   <div class="w-full flex-1 mt-4 overflow-y-auto pr-2" id="ui-SETS-panel">
@@ -307,6 +310,7 @@ window.updateHTMLUI = function(G) {
     document.querySelectorAll('.ui-diamonds').forEach(el => el.innerText = diamonds);
     document.querySelectorAll('.ui-diamonds-box').forEach(el => el.style.display = diamonds > 0 ? 'flex' : 'none');
     document.querySelectorAll('.ui-btn-mute').forEach(el => { el.innerText = sfxMuted ? '🔇' : '🔊'; el.style.opacity = sfxMuted ? 0.5 : 1; });
+    const langBtn = document.getElementById('ui-lang-btn'); if (langBtn) langBtn.innerText = '🌐 ' + (typeof curLang !== 'undefined' ? curLang.toUpperCase() : 'TR');
 
     // Build specific screen contents
     if (G.state === ST.MENU) { document.getElementById('ui-MENU').classList.add('active'); }
@@ -527,7 +531,6 @@ window.uiC = function(action, val) {
     }
     else if (action === 'resume') G.togglePause();
     else if (action === 'lv') G.startLv(val);
-    else if (action === 'shoptab') { window.shopTabState = val; window.UI_NEEDS_REBUILD = true; window.updateHTMLUI(G); }
     else if (action === 'char') {
         const ch = CHARS[val];
         if (ownedChars[val]) { selChar = val; saveAll(); }

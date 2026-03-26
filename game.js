@@ -13,7 +13,7 @@ if (isMobile) {
     get: function () { return 0; }
   });
 }
-
+let _coralCanvasPool = [], _frogGrassCache = null; // Performans: offscreen canvas havuzları
 /* ── i18n ── */
 const LANG = {
   tr: {
@@ -779,7 +779,7 @@ class Obstacle {
       this.jellyR = 12 + Math.random() * 9;
       this.jellyClr = ['rgba(192,132,252,.8)', 'rgba(45,212,191,.8)', 'rgba(249,168,212,.8)'][Math.floor(Math.random() * 3)];
 
-      this._ocv = document.createElement('canvas');
+      this._ocv = _coralCanvasPool.pop() || document.createElement('canvas');
       this._ocv.width = OW + 10; this._ocv.height = Math.max(H, 800);
       const octx = this._ocv.getContext('2d'); const tw = OW + 10;
       const g1 = octx.createLinearGradient(0, 0, tw, 0); g1.addColorStop(0, '#0f766e'); g1.addColorStop(.5, '#0d9488'); g1.addColorStop(1, '#0f766e');
@@ -1243,6 +1243,7 @@ class Obstacle {
     if (!this.isCyber && this.coin) { this.coin.draw(); }
   }
   off() { if (this.isCyber) return false; return this.x + OW + 15 < 0; }
+  release() { if (this._ocv) { if (_coralCanvasPool.length < 4) _coralCanvasPool.push(this._ocv); this._ocv = null; } }
   hits(bird) {
     const b = bird.hb(), bx2 = b.x + b.w, by2 = b.y + b.h;
     if (this.isCyber) {
@@ -1552,7 +1553,7 @@ const G = {
   get cfg() { return LEVELS[this.lvi]; }, get ch() { return CHARS[selChar]; },
   init() {
     const lv = this.cfg, ch = this.ch;
-    this.player = new Player(lv, ch); this.obs = []; this.spaceObs = []; this.alienObs = []; this.score = 0; this.sesC = 0; this.pt = 0; this.goff = 0; this.deadT = 0; this.compA = 0;
+    this.player = new Player(lv, ch); this.obs.forEach(o => o.release && o.release()); this.obs = []; this.spaceObs = []; this.alienObs = []; this.score = 0; this.sesC = 0; this.pt = 0; this.goff = 0; this.deadT = 0; this.compA = 0;
     this.startTick = this.tick; this.elapsed = 0; this.autoFlipTimer = 0;
     this.glitchFlipped = false; this.glitchT = 0; this.glitchCountdown = -1; this.glitchCdTick = 0; this.glitchTriggered = false;
     this.windTimer = 0; this.spaceTimer = 0; this._spaceScoreTick = 0; this._lastGlitchScore = -1; this._flashT = 0; this.reviveCount = 0;
@@ -1624,7 +1625,6 @@ const G = {
     }
 
     this.player.vy = 0; this.player.crk = 0; this.player.rot = 0;
-    this.blocks = [];
     if (this.cfg && this.cfg.mode === 'cyber') {
       this.obs.forEach(o => {
         if (o.isCyber) {
@@ -1635,7 +1635,7 @@ const G = {
         }
       });
     } else {
-      this.obs = [];
+      this.obs.forEach(o => o.release && o.release()); this.obs = [];
     }
     this.pipes = (this.pipes || []).filter(p => p.x > this.player.x + 200 || p.x + p.w < this.player.x);
     this.laserTick = 0;
@@ -1716,7 +1716,7 @@ const G = {
     else if (this.state === ST.MENU) { this.state = ST.SEL; sfxSwsh(); }
   },
   update() {
-    this.tick++; this.menuW += .04; PARTS.length > 200 && PARTS.splice(0, 50);
+    this.tick++; this.menuW += .04;
     const cs = spd(this.score, this.cfg); this.clouds.forEach(c => c.update(cs)); if (this.sf) this.sf.update();
     updateParts();
     // E7: pause freezes everything
@@ -1890,7 +1890,8 @@ const G = {
       this.pt = 0;
     }
     // Regular obstacles
-    this.obs.forEach(o => o.update()); this.obs = this.obs.filter(o => !o.off());
+    this.obs.forEach(o => o.update());
+    this.obs = this.obs.filter(o => { if (o.off()) { o.release && o.release(); return false; } return true; });
     for (const o of this.obs) {
       // H2 FIX: B5 cyber — score based on lazer cycle completions, not position
       if (lv.mode === 'cyber') {
@@ -2228,6 +2229,19 @@ const G = {
       const FLANE_W = 50;
       const FSIDE_W = 55;
       const FLANES = this.cfg.lanes || 12;
+      // Çim doku cache — sadece bir kez oluştur (285 fillRect → 1 drawImage)
+      if (!_frogGrassCache) {
+        _frogGrassCache = document.createElement('canvas');
+        _frogGrassCache.width = FSIDE_W; _frogGrassCache.height = H;
+        const _gctx = _frogGrassCache.getContext('2d');
+        _gctx.fillStyle = '#2d4a2d'; _gctx.fillRect(0, 0, FSIDE_W, H);
+        _gctx.fillStyle = '#3a5c3a';
+        for (let gy = 0; gy < H; gy += 14) {
+          for (let gx = 0; gx < FSIDE_W; gx += 12) {
+            if ((gx + gy) % 28 < 14) { _gctx.fillRect(gx, gy, 11, 13); }
+          }
+        }
+      }
       const FPLAYER_Y = H * 0.5;
       const camX = this._frogCameraX || FSIDE_W * 0.5;
       const tk = this.tick;
@@ -2297,17 +2311,7 @@ const G = {
       // ── 3. SOL KALDIRIM ──
       const leftSideSx = wx2sx(0);
       if (leftSideSx < W) {
-        ctx.fillStyle = '#2d4a2d';
-        ctx.fillRect(leftSideSx, 0, FSIDE_W, H);
-        // Kaldırım çim dokus
-        ctx.fillStyle = '#3a5c3a';
-        for (let gy = 0; gy < H; gy += 14) {
-          for (let gx = 0; gx < FSIDE_W; gx += 12) {
-            if ((gx + gy) % 28 < 14) {
-              ctx.fillRect(leftSideSx + gx, gy, 11, 13);
-            }
-          }
-        }
+        ctx.drawImage(_frogGrassCache, leftSideSx, 0); // cache: 1 drawImage yerine 286 fillRect
         // Başlangıç şeridi
         ctx.fillStyle = '#4ade80'; ctx.fillRect(leftSideSx + FSIDE_W - 4, 0, 4, H);
         // Başlangıç yazısı
@@ -2961,294 +2965,26 @@ const G = {
         window._apiBound = true;
       }
     }
-    // Sync live game state every frame via a plain object (avoids var redefinition errors)
-    window._gs = {
-      coins, diamonds, totalCoinsEarned, spentCoins, totalDiamondsEarned,
-      playerLv, playerXP, curLang, LANG, devMode,
-      bestTimes, lastTimes, unlockedLvs, ownedChars, selChar, sfxMuted
-    };
-    // Also set direct properties for legacy ui.js references
+    // HUD için her frame güncellenen değerler (coin/diamond sayacı)
     window.coins = coins; window.diamonds = diamonds;
-    window.totalCoinsEarned = totalCoinsEarned; window.spentCoins = spentCoins;
-    window.totalDiamondsEarned = totalDiamondsEarned;
-    window.playerLv = playerLv; window.playerXP = playerXP;
-    window.curLang = curLang; window.LANG = LANG; window.devMode = devMode;
-    window.bestTimes = bestTimes; window.lastTimes = lastTimes;
-    window.unlockedLvs = unlockedLvs; window.ownedChars = ownedChars;
-    window.selChar = selChar; window.sfxMuted = sfxMuted;
-    window.G = this;
+    // Nadiren değişen state — yalnızca state geçişlerinde veya zorla rebuild'de tam sync
+    if (this.state !== this._lastUIState || window.UI_NEEDS_REBUILD) {
+      window._gs = {
+        coins, diamonds, totalCoinsEarned, spentCoins, totalDiamondsEarned,
+        playerLv, playerXP, curLang, LANG, devMode,
+        bestTimes, lastTimes, unlockedLvs, ownedChars, selChar, sfxMuted
+      };
+      window.totalCoinsEarned = totalCoinsEarned; window.spentCoins = spentCoins;
+      window.totalDiamondsEarned = totalDiamondsEarned;
+      window.playerLv = playerLv; window.playerXP = playerXP;
+      window.curLang = curLang; window.LANG = LANG; window.devMode = devMode;
+      window.bestTimes = bestTimes; window.lastTimes = lastTimes;
+      window.unlockedLvs = unlockedLvs; window.ownedChars = ownedChars;
+      window.selChar = selChar; window.sfxMuted = sfxMuted;
+      this._lastUIState = this.state;
+    }
     if (typeof updateHTMLUI === 'function') updateHTMLUI(this);
-    return; // SKIP CANVAS MENUS
-
-    // ═══ MENU ═══
-    if (this.state === ST.MENU) {
-      // Title glow — bold Flappyverse branding
-      ctx.save();
-      ctx.font = '900 52px Outfit'; ctx.textAlign = 'center';
-      ctx.fillStyle = '#fff'; ctx.shadowColor = '#00ccff'; ctx.shadowBlur = 36;
-      ctx.fillText(T('title'), W / 2, H * .28 + Math.sin(this.menuW) * 7);
-      ctx.shadowBlur = 0;
-      ctx.font = 'bold 15px Outfit'; ctx.fillStyle = '#00ffcc'; ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 10;
-      ctx.fillText('7 Bölüm · Yerçekimi · Glitch · Kaos', W / 2, H * .28 + Math.sin(this.menuW) * 7 + 42); // H9 FIX
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      // Animated char preview
-      drawChar(this.ch, W / 2 - 20, H * .48 + Math.sin(this.menuW * 1.5) * 8, 26, 0);
-      goldBadge(W - 14, H * .62); xpBar(16, H * .62 - 16, 140, 8);
-      this._bb.play = btn(T('play'), H * .67);
-      this._bb.shop = btn(T('shop'), H * .67 + 64, 180, 44, '#a78bfa', '#7c3aed');
-      this._bb.sets = smBtn('Profil / Ayarlar', W / 2, H * .67 + 64 + 52, 160, 34);
-    }
-
-    // ═══ LEVEL SELECT ═══
-    if (this.state === ST.SEL) {
-      this._bb.back = backBtn(); goldBadge(W - 14, 50);
-      ctx.font = 'bold 24px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(T('levelsel'), W / 2, 102);
-      const cW = 308, cH = 76, sY = 115, gap = 8;
-      LEVELS.forEach((lv, i) => {
-        const x = (W - cW) / 2, y = sY + i * (cH + gap), lock = !unlockedLvs[i]; panel(x, y, cW, cH, 12);
-        if (lock) {
-          ctx.font = 'bold 14px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.textAlign = 'center';
-          ctx.fillText(T('locked') + ' ' + T('lv')[i], W / 2, y + 26);
-          ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillText(T('unlock'), W / 2, y + 46);
-        } else {
-          ctx.fillStyle = lv.sky[1]; ctx.beginPath(); ctx.arc(x + 20, y + cH / 2, 8, 0, Math.PI * 2); ctx.fill();
-          ctx.font = 'bold 14px Outfit'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(T('lv')[i], x + 36, y + 22);
-          // H7 FIX: dynamic obstacle label per level mode
-          const obsLabel = lv.mode === 'cyber' ? T('lazer') : lv.mode === 'buoy' ? T('dalga') : lv.mode === 'space' ? 'hedef' : lv.mode === 'flappy' ? 'skor' : T('engel');
-          const tgtLabel = lv.mode === 'flappy' ? '∞' : lv.tgt;
-          ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText(T('lvsub')[i] + '  ·  ' + tgtLabel + ' ' + obsLabel, x + 36, y + 40);
-          const bt = bestTimes[i], lt = lastTimes[i];
-          ctx.font = '10px Outfit'; ctx.fillStyle = C.gold;
-          ctx.fillText(bt ? `${T('bestTime')}: ${bt}${T('sec')}` : '-', x + 36, y + 58);
-          if (lt) ctx.fillText(`${T('lastTime')}: ${lt}${T('sec')}`, x + 170, y + 58);
-        }
-      });
-    }
-
-    // ═══ SHOP ═══
-    if (this.state === ST.SHOP) {
-      this._bb.back = backBtn(); ctx.font = 'bold 24px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(T('shop'), W / 2, 52); goldBadge(W - 14, 52);
-      const cW = 312, cH = 96, sY = 68, gap = 8; this._bb.shopBuy = [];
-      CHARS.forEach((ch, i) => {
-        const x = (W - cW) / 2, y = sY + i * (cH + gap), owned = ownedChars[i], sel = selChar === i; panel(x, y, cW, cH, 12);
-        drawChar(ch, x + 34, y + cH / 2, 18, 0);
-        ctx.font = 'bold 15px Outfit'; ctx.textAlign = 'left'; ctx.fillStyle = sel ? C.gold : '#fff'; ctx.fillText(ch.emoji + ' ' + T('charName')[i], x + 66, y + 24);
-        ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText(T('charDesc')[i], x + 66, y + 42);
-        if (sel) { ctx.font = 'bold 12px Outfit'; ctx.fillStyle = '#4ade80'; ctx.fillText(T('equipped'), x + 66, y + 62); }
-        else if (owned) {
-          const b = smBtn(T('equip'), x + cW - 90, y + cH / 2, 80, 28, '#334155', '#1e3a5f'); this._bb.shopBuy.push({ b, i, owned: true });
-        } else {
-          const cb = coins >= ch.price, b = smBtn(`🌟 ${ch.price}`, x + cW - 98, y + cH / 2, 88, 28, cb ? '#92400e' : '#1e293b', cb ? '#d97706' : '#334155'); this._bb.shopBuy.push({ b, i, owned: false, cb });
-        }
-      });
-      // 💎 Elmas Satın Alma (2000 Altın)
-      const dY = sY + CHARS.length * (cH + gap) + 4;
-      panel((W - cW) / 2, dY, cW, 64, 12);
-      ctx.font = 'bold 18px Outfit'; ctx.fillStyle = '#06b6d4'; ctx.textAlign = 'left';
-      ctx.fillText('💎 1x Elmas', (W - cW) / 2 + 20, dY + 38);
-      ctx.font = '12px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)';
-      ctx.fillText(`Mevcut: ${diamonds}`, (W - cW) / 2 + 120, dY + 37);
-
-      const cbD = coins >= 2000;
-      this._bb.buyDiamond = smBtn('🌟 2000', (W - cW) / 2 + cW - 88, dY + 32, 76, 28, cbD ? '#0ea5e9' : '#1e293b', cbD ? '#0284c7' : '#334155');
-    }
-
-    // ═══ SETTINGS -> PROFILE ═══
-    if (this.state === ST.SETS) {
-      this._bb.back = backBtn();
-      this._bb.muteBtn = smBtn(sfxMuted ? '🔇 KAPALI' : '🔊 AÇIK', W - 100, 29, 88, 34, sfxMuted ? '#ef4444' : '#10b981', sfxMuted ? '#b91c1c' : '#059669');
-      // Lang selection is removed as requested
-
-      // Player stats
-      panel((W - 280) / 2, 200, 280, 100, 14);
-      ctx.font = 'bold 13px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(`${T('level')} ${playerLv}`, W / 2, 225);
-      xpBar(W / 2 - 100, 233, 200, 9);
-      ctx.font = '12px Outfit'; ctx.fillStyle = C.gold; ctx.fillText(`🌟 ${devMode ? '∞' : coins} ${T('coins')}`, W / 2, 267);
-      // Dev code input box
-      panel((W - 280) / 2, 312, 280, 54, 12);
-      ctx.font = 'bold 12px Outfit'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText('🔑 Geliştirici Kodu:', W / 2 - 130, 332);
-      rr(W / 2 - 130, 338, 260, 22, 6); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(125,211,252,.4)'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.font = '13px Outfit'; ctx.fillStyle = '#7dd3fc'; ctx.textAlign = 'left';
-      const showCode = devCode.length > 0 ? devCode.replace(/./g, '*') + '_' : '_';
-      ctx.fillText(showCode, W / 2 - 124, 354);
-      if (devCode.toLowerCase() === DEV_SECRET) {
-        ctx.font = 'bold 12px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#4ade80'; ctx.fillText('✔ Kod Doğru! Aşağıdan aktif et.', W / 2, 376);
-      }
-      // Dev mode toggle
-      panel((W - 280) / 2, 380, 280, 60, 12);
-      const devC1 = devMode ? '#dc2626' : '#16a34a', devC2 = devMode ? '#7f1d1d' : '#14532d';
-      this._bb.devToggle = smBtn(devMode ? '🔴 Dev Mod: AÇIK — Kapat' : '🟢 Dev Mod: KAPALI — Aç', W / 2 - 130, 410, 260, 36, devC1, devC2);
-      if (devMode) {
-        ctx.font = 'bold 11px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fbbf24';
-        ctx.fillText('⚡ Tüm bölümler açık · Sınırsız altın', W / 2, 427);
-      }
-      // Times
-      panel((W - 280) / 2, 450, 280, 70, 12);
-      ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.textAlign = 'center';
-      LEVELS.forEach((lv, i) => { if (bestTimes[i]) ctx.fillText(`${T('lv')[i]}: ${bestTimes[i]}${T('sec')}`, W / 2, 468 + i * 17); });
-    }
-
-    // ═══ PLAY HUD PREVIOUSLY MOVED TOP ═══
-
-    // ═══ PAUSE ═══
-    if (this.state === ST.PAUSE) {
-      ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
-      ctx.font = '900 44px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
-      ctx.shadowColor = '#a78bfa'; ctx.shadowBlur = 24;
-      ctx.fillText(T('paused'), W / 2, H * 0.35); ctx.shadowBlur = 0;
-      this._bb.resume = btn('Devam Et', H * 0.35 + 80, 200, 48, '#4ade80', '#16a34a');
-      this._bb.pmenu = btn(T('toMenu'), H * 0.35 + 140, 200, 48, '#f87171', '#dc2626');
-    }
-    // ═══ GAME OVER ═══
-    if (this.state === ST.OVER) {
-      if (this.deadT < 60 && this._deathPoint) {
-        ctx.save(); ctx.strokeStyle = `rgba(239, 68, 68, ${1 - this.deadT / 60})`; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(this._deathPoint.x, this._deathPoint.y, 22 + this.deadT * 1.5, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(this._deathPoint.x - 10, this._deathPoint.y - 10); ctx.lineTo(this._deathPoint.x + 10, this._deathPoint.y + 10); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(this._deathPoint.x + 10, this._deathPoint.y - 10); ctx.lineTo(this._deathPoint.x - 10, this._deathPoint.y + 10); ctx.stroke();
-        ctx.restore();
-      }
-      if (this.cfg.mode === 'flappy') {
-        // ── Dereceli: Rank + Global Sıralama ──
-        const pw = 340, px = (W - pw) / 2, py = 14;
-        const needsName = this._pendingLbScore !== undefined;
-        const tier = getRankTier(this.score);
-        const nextTier = getNextRankTier(this.score);
-        const PHASE_NAMES = ['🌿 Klasik', '💨 Rüzgar', '🌑 Karanlık', '⚡ Glitch', '🚀 Uzay', '🌊 Derin', '🌌 Kaos'];
-        const PHASE_COLS = ['#4ade80', '#93c5fd', '#a78bfa', '#ff0080', '#818cf8', '#14b8a6', '#f97316'];
-        const lastPhase = Math.floor(this.score / 10) % 7;
-
-        // ── Üst bilgi paneli ──
-        const infoPh = needsName ? 278 : 248;
-        panel(px, py, pw, infoPh, 18);
-        ctx.textAlign = 'center';
-        ctx.font = '900 22px Outfit'; ctx.fillStyle = '#f87171';
-        ctx.shadowColor = '#f87171'; ctx.shadowBlur = isMobile ? 0 : 12;
-        ctx.fillText('💥 ' + T('gameover'), W / 2, py + 36); ctx.shadowBlur = 0;
-
-        // Skor
-        ctx.font = '900 50px Outfit'; ctx.fillStyle = '#fbbf24';
-        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = isMobile ? 0 : 18;
-        ctx.fillText(this.score, W / 2, py + 90); ctx.shadowBlur = 0;
-        ctx.font = 'bold 11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.4)';
-        ctx.fillText('SKOR', W / 2, py + 104);
-
-        // Rank badge
-        ctx.font = 'bold 18px Outfit'; ctx.fillStyle = tier.color;
-        ctx.shadowColor = tier.color; ctx.shadowBlur = isMobile ? 0 : 8;
-        ctx.fillText(tier.emoji + ' ' + tier.name, W / 2, py + 128); ctx.shadowBlur = 0;
-
-        // Sonraki rank ilerleme çubuğu
-        if (nextTier) {
-          const barW = pw - 60, barX = px + 30, barY = py + 138;
-          const prog = (this.score - tier.min) / (nextTier.min - tier.min);
-          rr(barX, barY, barW, 7, 4); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
-          rr(barX, barY, Math.max(6, barW * Math.min(prog, 1)), 7, 4); ctx.fillStyle = tier.color; ctx.fill();
-          ctx.font = '9px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.textAlign = 'right';
-          ctx.fillText(nextTier.emoji + ' ' + nextTier.name + ' → ' + nextTier.min + ' puan', px + pw - 30, barY + 18); ctx.textAlign = 'center';
-        }
-
-        // Faz + coin
-        ctx.font = 'bold 12px Outfit'; ctx.fillStyle = PHASE_COLS[lastPhase];
-        ctx.fillText('Son Dünya: ' + PHASE_NAMES[lastPhase], W / 2, py + 166);
-        ctx.font = 'bold 13px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = isMobile ? 0 : 4;
-        ctx.fillText('🌟 +' + this.sesC + ' altın', W / 2, py + 184); ctx.shadowBlur = 0;
-
-        // İsim girişi (ilk kez) veya kayıt durumu
-        if (needsName) {
-          ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.6)';
-          ctx.fillText('Sıralamaya adını yaz:', W / 2, py + 206);
-          rr(px + 18, py + 212, pw - 36, 30, 9); ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fill();
-          ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.8; ctx.stroke();
-          ctx.font = 'bold 15px Outfit'; ctx.fillStyle = '#fbbf24';
-          ctx.fillText((this._lbNameInput || '') + '▌', W / 2, py + 232);
-          this._bb.lbSave = smBtn('💾 Kaydet', W / 2 - 55, py + 250, 110, 28, '#16a34a', '#15803d');
-        } else {
-          ctx.font = '11px Outfit'; ctx.fillStyle = '#4ade80';
-          ctx.fillText('✔ ' + (myDisplayName || 'Anonim') + ' — skor kaydedildi', W / 2, py + 210);
-          const myBest = myRankedScore;
-          if (this.score >= myBest) {
-            ctx.font = 'bold 11px Outfit'; ctx.fillStyle = '#fbbf24';
-            ctx.fillText('🏅 Yeni Kişisel Rekorum!', W / 2, py + 228);
-          } else {
-            ctx.font = '10px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.3)';
-            ctx.fillText('En iyi: ' + myBest + ' · Sıralaman: #' + (myRankedPos || '?'), W / 2, py + 228);
-          }
-        }
-
-        // Global sıralama (kaydırılabilir)
-        const lbY = py + infoPh + 6;
-        drawRankedLeaderboard(px, lbY, pw, _lbScrollOff);
-        const lbPanelH = 56 + 7 * 34 + 14;
-        if (rankedBoard.length > 7) {
-          this._bb.lbUp = smBtn('▲', px + pw - 52, lbY + 4, 22, 20, '#334155', '#1e3a5f');
-          this._bb.lbDown = smBtn('▼', px + pw - 26, lbY + 4, 22, 20, '#334155', '#1e3a5f');
-        }
-
-        // Butonlar
-        const btnY = lbY + lbPanelH + 10;
-        if (this.deadT > 50) {
-          if (diamonds > 0) {
-            this._bb.revive = smBtn('💎 Diril (-1)', W / 2 - 80, btnY, 160, 36, '#0ea5e9', '#0284c7');
-            this._bb.retry = btn(T('retry'), btnY + 46, 190, 46, '#ef4444', '#b91c1c');
-            this._bb.tmenu = smBtn(T('toMenu'), W / 2 - 50, btnY + 102, 100, 34);
-          } else {
-            this._bb.retry = btn(T('retry'), btnY, 190, 46, '#ef4444', '#b91c1c');
-            this._bb.tmenu = smBtn(T('toMenu'), W / 2 - 50, btnY + 56, 100, 34);
-          }
-        }
-      } else {
-        // ── Normal Game Over ──
-        const pw = 320, ph = 240, px = (W - pw) / 2, py = H * .14;
-        panel(px, py, pw, ph);
-        ctx.textAlign = 'center'; ctx.font = 'bold 30px Outfit'; ctx.fillStyle = '#f87171';
-        ctx.fillText(T('gameover') + ' 💥', W / 2, py + 46);
-        const goLabel = this.cfg.mode === 'cyber' ? T('lazer') : this.cfg.mode === 'buoy' ? T('dalga') : this.cfg.mode === 'space' ? 'hedef' : T('engel');
-        ctx.font = '16px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)';
-        ctx.fillText(`${this.score} / ${this.cfg.tgt} ${goLabel}`, W / 2, py + 82);
-        ctx.font = 'bold 20px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = 8;
-        ctx.textAlign = 'center';
-        ctx.fillText(`🌟 +${this.sesC} ${T('coins')}`, W / 2, py + 118); ctx.shadowBlur = 0;
-        const el2 = Math.floor(this.elapsed / 60); ctx.font = '14px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.45)';
-        ctx.fillText(`⏱ ${el2}${T('sec')}`, W / 2, py + 148);
-        const btnY = py + ph + 28;
-        if (this.deadT > 50) {
-          if (diamonds > 0) {
-            this._bb.revive = smBtn('💎 Diril (-1)', W / 2 - 80, btnY, 160, 36, '#0ea5e9', '#0284c7');
-            this._bb.retry = btn(T('retry'), btnY + 46, 190, 46, '#ef4444', '#b91c1c');
-            this._bb.tmenu = smBtn(T('toMenu'), W / 2 - 50, btnY + 102, 100, 34);
-          } else {
-            this._bb.retry = btn(T('retry'), btnY, 190, 46, '#ef4444', '#b91c1c');
-            this._bb.tmenu = smBtn(T('toMenu'), W / 2 - 50, btnY + 56, 100, 34);
-          }
-        }
-      }
-    }
-
-    // ═══ LEVEL DONE ═══
-    if (this.state === ST.DONE) {
-      const a = Math.min(this.compA / 30, 1), pw = 318, ph = 270, px = (W - pw) / 2, py = H * .22;
-      ctx.save(); ctx.globalAlpha = a; panel(px, py, pw, ph); ctx.textAlign = 'center';
-      ctx.font = 'bold 28px Outfit'; ctx.fillStyle = '#4ade80'; ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 16; ctx.fillText(T('victory') + ' 🎉', W / 2, py + 46); ctx.shadowBlur = 0;
-      if (this.isRec) { ctx.font = 'bold 16px Outfit'; ctx.fillStyle = '#fbbf24'; ctx.fillText(T('newRecord'), W / 2, py + 76); }
-      ctx.font = '15px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillText(T('lv')[this.lvi], W / 2, py + 100);
-      const el = lastTimes[this.lvi]; ctx.font = 'bold 22px Outfit'; ctx.fillStyle = '#fff'; ctx.fillText(`⏱ ${el}${T('sec')}`, W / 2, py + 130);
-      ctx.font = 'bold 18px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = 8; ctx.fillText(`🌟 +${this.sesC} ${T('coins')}!`, W / 2, py + 165); ctx.shadowBlur = 0;
-      ctx.font = 'bold 14px Outfit'; ctx.fillStyle = '#a78bfa'; ctx.fillText(`+${this.cfg.xpR} ${T('xp')}  ·  ${T('level')} ${playerLv}`, W / 2, py + 196);
-      ctx.font = '12px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillText(`${T('coins')}: ${coins} 🌟`, W / 2, py + 220);
-      if (this.compA > 65) { const n = this.lvi + 1; if (n < LEVELS.length) btn(T('next'), py + ph + 36, 220, 48, '#22c55e', '#15803d'); else btn(T('congratz'), py + ph + 36, 220, 48, '#a78bfa', '#7c3aed'); }
-      ctx.restore();
-    }
-
-    // ═══ WIN / ALL DONE ═══
-    if (this.state === ST.WIN) {
-      ctx.font = 'bold 42px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fde68a'; ctx.shadowColor = '#f59e0b'; ctx.shadowBlur = 30; ctx.fillText('🏆', W / 2, H * .28 + Math.sin(this.menuW) * 8); ctx.fillText(T('congratz'), W / 2, H * .38 + Math.sin(this.menuW) * 8); ctx.shadowBlur = 0;
-      ctx.font = '18px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(T('allDone'), W / 2, H * .48 + Math.sin(this.menuW) * 7);
-      ctx.font = 'bold 22px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = 10; ctx.fillText(`🌟 ${coins} ${T('coins')}`, W / 2, H * .56 + Math.sin(this.menuW) * 6); ctx.shadowBlur = 0;
-      btn(T('toMenu'), H * .72, 200, 48, '#a78bfa', '#7c3aed');
-    }
+    return;
   },
 
   click(cx, cy) {
@@ -3256,87 +2992,7 @@ const G = {
       if (this._bb && this._bb.pauseBtn && hitTest(this._bb.pauseBtn, cx, cy)) { this.togglePause(); return; }
       this.tap(cx, cy);
     }
-    return; // SKIP ALL CANVAS CLICK HANDLERS
-
-    // BACK button
-    if ((this.state === ST.SEL || this.state === ST.SHOP || this.state === ST.SETS) && this._bb.back && hitTest(this._bb.back, cx, cy)) { this.state = ST.MENU; sfxSwsh(); return; }
-    // E7: pause button click
-    if (this.state === ST.PLAY && this._bb.pauseBtn && hitTest(this._bb.pauseBtn, cx, cy)) { this.togglePause(); return; }
-
-    // Pause menu clicks
-    if (this.state === ST.PAUSE) {
-      if (this._bb.resume && hitTest(this._bb.resume, cx, cy)) { this.togglePause(); return; }
-      if (this._bb.pmenu && hitTest(this._bb.pmenu, cx, cy)) { this.state = ST.MENU; sfxSwsh(); return; }
-      return; // Do not unpause or pass to tap() if clicked elsewhere
-    }
-    if (this.state === ST.MENU) {
-      if (hitTest(this._bb.play, cx, cy)) { this.state = ST.SEL; sfxSwsh(); }
-      else if (hitTest(this._bb.shop, cx, cy)) { this.state = ST.SHOP; sfxSwsh(); }
-      else if (hitTest(this._bb.sets, cx, cy)) { this.state = ST.SETS; sfxSwsh(); }
-    }
-    else if (this.state === ST.SEL) {
-      const cW = 308, cH = 76, sY = 115, gap = 8;
-      LEVELS.forEach((lv, i) => { if (!unlockedLvs[i]) return; const x = (W - cW) / 2, y = sY + i * (cH + gap); if (hitTest({ x, y, w: cW, h: cH }, cx, cy)) this.startLv(i); });
-    }
-    else if (this.state === ST.SHOP) {
-      if (this._bb.buyDiamond && hitTest(this._bb.buyDiamond, cx, cy)) {
-        if (devMode || coins >= 2000) {
-          if (!devMode) coins -= 2000;
-          diamonds++;
-          saveAll(); sfxXP(); return;
-        } else {
-          sfxDie(); return;
-        }
-      }
-      this._bb.shopBuy && this._bb.shopBuy.forEach(({ b, i, owned, cb }) => {
-        if (!hitTest(b, cx, cy)) return;
-        if (owned) { selChar = i; saveAll(); sfxSwsh(); }
-        else if (devMode) { ownedChars[i] = true; selChar = i; saveAll(); sfxCoin(); } // dev: free
-        else if (cb) { coins -= CHARS[i].price; ownedChars[i] = true; selChar = i; saveAll(); sfxCoin(); }
-      });
-    }
-    else if (this.state === ST.SETS) {
-      if (this._bb.muteBtn && hitTest(this._bb.muteBtn, cx, cy)) { sfxMuted = !sfxMuted; S.s('sfx_mute', sfxMuted); sfxSwsh(); }
-      else if (hitTest(this._bb.langTR, cx, cy)) { curLang = 'tr'; sfxSwsh(); }
-      else if (hitTest(this._bb.langEN, cx, cy)) { curLang = 'en'; sfxSwsh(); }
-      else if (this._bb.devToggle && hitTest(this._bb.devToggle, cx, cy)) {
-        const codeOk = devCode.toLowerCase() === DEV_SECRET || devCode.toLowerCase() === DEV_ALT;
-        if (!devMode && !codeOk) { sfxDie(); return; } // wrong code
-        devMode = !devMode; saveAll(); applyDevMode(); sfxSwsh();
-        if (devMode) { spawnParts(W / 2, H / 2, '#fbbf24', 20, 6); }
-      }
-    }
-    else {
-      // Game over actions
-      if (this.state === ST.OVER && this.deadT > 50) {
-        // Leaderboard save button
-        if (this._bb.lbUp && hitTest(this._bb.lbUp, cx, cy)) { _lbScrollOff = Math.max(0, _lbScrollOff - 1); sfxSwsh(); return; }
-        if (this._bb.lbDown && hitTest(this._bb.lbDown, cx, cy)) { _lbScrollOff = Math.min(Math.max(0, rankedBoard.length - 7), _lbScrollOff + 1); sfxSwsh(); return; }
-        if (this._bb.lbSave && hitTest(this._bb.lbSave, cx, cy) && this._pendingLbScore !== undefined) {
-          rankedSubmit(this._lbNameInput || 'Anonim', this._pendingLbScore);
-          this._pendingLbScore = undefined;
-          sfxCoin(); return;
-        }
-        if (diamonds > 0 && this._bb.revive && hitTest(this._bb.revive, cx, cy)) {
-          diamonds--; saveAll(); sfxXP();
-          this.state = ST.PLAY; this.player.alive = true; this.player.y = H / 2; this.player.vy = 0;
-          this.obs.forEach(o => {
-            for (let i = 0; i < 8; i++) spawnParts(o.x + OW / 2, o.topH, o.pc?.[0] || '#fff', 4, 3);
-            for (let i = 0; i < 8; i++) spawnParts(o.x + OW / 2, o.botY, o.pc?.[0] || '#fff', 4, 3);
-          });
-          if (this.spaceObs) this.spaceObs.forEach(o => {
-            for (let i = 0; i < 6; i++) spawnParts(o.x, o.y, '#dc2626', 5, 4);
-          });
-          this.obs = []; this.spaceObs = []; this.alienObs = [];
-          this.pt = -90;
-          this.deadT = 0; return;
-        }
-        if (this._bb.retry && hitTest(this._bb.retry, cx, cy)) { this.startLv(this.lvi); return; }
-        if (this._bb.tmenu && hitTest(this._bb.tmenu, cx, cy)) { this.state = ST.SEL; sfxSwsh(); return; }
-        return; // Ölüm ekranında başka yere basınca boşa gitmesin
-      }
-      this.tap(cx, cy);
-    }
+    return;
   },
   loop(ts) {
     requestAnimationFrame(t => this.loop(t));
