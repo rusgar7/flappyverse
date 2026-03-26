@@ -90,9 +90,9 @@ var devMode = S.g('devmode', false);
 const SAVE_VERSION = 2;
 if (S.g('save_ver', 0) < SAVE_VERSION) {
   unlockedLvs = [true, false, false, false, false, false, false, false, false];
-  bestTimes = [0,0,0,0,0,0,0,0,0];
-  lastTimes = [0,0,0,0,0,0,0,0,0];
-  compCounts = [0,0,0,0,0,0,0,0,0];
+  bestTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  lastTimes = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  compCounts = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   S.s('unlocked', unlockedLvs); S.s('btimes', bestTimes); S.s('ltimes', lastTimes); S.s('compc', compCounts);
   S.s('save_ver', SAVE_VERSION);
 }
@@ -170,12 +170,12 @@ let myDisplayName = S.g('display_name', '');
 
 /* ── RANK TİERS ── */
 const RANK_TIERS = [
-  { name: 'Bronz',   min: 0,   color: '#a16207', bg: 'rgba(161,98,7,0.25)',   emoji: '🥉', border: '#ca8a04' },
-  { name: 'Gümüş',  min: 10,  color: '#94a3b8', bg: 'rgba(148,163,184,0.2)', emoji: '🥈', border: '#cbd5e1' },
-  { name: 'Altın',  min: 25,  color: '#fbbf24', bg: 'rgba(251,191,36,0.2)',  emoji: '🏅', border: '#f59e0b' },
-  { name: 'Platin', min: 50,  color: '#22d3ee', bg: 'rgba(34,211,238,0.2)',  emoji: '💠', border: '#06b6d4' },
-  { name: 'Elmas',  min: 100, color: '#a78bfa', bg: 'rgba(167,139,250,0.2)', emoji: '💎', border: '#8b5cf6' },
-  { name: 'Usta',   min: 200, color: '#f472b6', bg: 'rgba(244,114,182,0.2)', emoji: '⭐', border: '#ec4899' },
+  { name: 'Bronz', min: 0, color: '#a16207', bg: 'rgba(161,98,7,0.25)', emoji: '🥉', border: '#ca8a04' },
+  { name: 'Gümüş', min: 10, color: '#94a3b8', bg: 'rgba(148,163,184,0.2)', emoji: '🥈', border: '#cbd5e1' },
+  { name: 'Altın', min: 25, color: '#fbbf24', bg: 'rgba(251,191,36,0.2)', emoji: '🏅', border: '#f59e0b' },
+  { name: 'Platin', min: 50, color: '#22d3ee', bg: 'rgba(34,211,238,0.2)', emoji: '💠', border: '#06b6d4' },
+  { name: 'Elmas', min: 100, color: '#a78bfa', bg: 'rgba(167,139,250,0.2)', emoji: '💎', border: '#8b5cf6' },
+  { name: 'Usta', min: 200, color: '#f472b6', bg: 'rgba(244,114,182,0.2)', emoji: '⭐', border: '#ec4899' },
   { name: 'Efsane', min: 500, color: '#fb923c', bg: 'rgba(251,146,60,0.25)', emoji: '👑', border: '#f97316' },
 ];
 function getRankTier(score) {
@@ -226,6 +226,72 @@ function lbFetchGlobal() {
   } catch (e) { }
 }
 
+/* ── RANKED SYSTEM v2 ── */
+let rankedBoard = S.g('rb', []); // [{deviceId, displayName, bestScore, rank, pos}]
+let myRankedScore = S.g('my_rscore', 0);
+let myRankedPos = S.g('my_rpos', 0);
+let _lbScrollOff = 0;
+
+function rankedSubmit(displayName, score) {
+  const badWords = ['amk', 'piç', 'yarrak', 'sik', 'siktir', 'orospu', 'göt', 'bok', 'fuck', 'shit', 'bitch'];
+  let n = (displayName || '').slice(0, 14).trim() || 'Anonim';
+  if (badWords.some(w => n.toLowerCase().includes(w))) n = 'Anonim';
+  myDisplayName = n;
+  S.s('display_name', n);
+  if (score > myRankedScore) { myRankedScore = score; S.s('my_rscore', score); }
+  const tier = getRankTier(myRankedScore);
+  if (!window.fbDb) return;
+  try {
+    const ref = window.fbDb.collection('ranked_v2').doc(myDeviceId);
+    ref.get().then(doc => {
+      const prev = doc.exists ? doc.data() : {};
+      const newBest = Math.max(score, prev.bestScore || 0);
+      ref.set({
+        deviceId: myDeviceId,
+        displayName: n,
+        bestScore: newBest,
+        rank: getRankTier(newBest).name,
+        gamesPlayed: (prev.gamesPlayed || 0) + 1,
+        lastUpdated: new Date().toISOString(),
+        firstPlayed: prev.firstPlayed || new Date().toISOString()
+      }).then(() => rankedFetchGlobal()).catch(() => { });
+    }).catch(() => { });
+  } catch (e) { }
+}
+
+function rankedFetchGlobal() {
+  if (!window.fbDb) return;
+  try {
+    window.fbDb.collection('ranked_v2')
+      .orderBy('bestScore', 'desc').limit(50).get()
+      .then(snap => {
+        const rows = [];
+        snap.forEach((doc, i) => {
+          const d = doc.data();
+          rows.push({ deviceId: d.deviceId, displayName: d.displayName || 'Anonim', bestScore: d.bestScore || 0, rank: d.rank || 'Bronz', pos: rows.length + 1 });
+        });
+        rankedBoard = rows;
+        S.s('rb', rankedBoard);
+        // Find own position
+        const own = rankedBoard.findIndex(r => r.deviceId === myDeviceId);
+        if (own >= 0) { myRankedPos = own + 1; S.s('my_rpos', myRankedPos); }
+        else rankedFetchMyPosition();
+      }).catch(() => { });
+  } catch (e) { }
+}
+
+function rankedFetchMyPosition() {
+  if (!window.fbDb) return;
+  try {
+    window.fbDb.collection('ranked_v2')
+      .where('bestScore', '>', myRankedScore).get()
+      .then(snap => {
+        myRankedPos = snap.size + 1;
+        S.s('my_rpos', myRankedPos);
+      }).catch(() => { });
+  } catch (e) { }
+}
+
 function drawLeaderboard(px, py, pw) {
   const rh = 28, maxRows = Math.min(leaderboard.length, 10);
   panel(px, py, pw, 44 + maxRows * rh + 14, 14);
@@ -256,6 +322,70 @@ function drawLeaderboard(px, py, pw) {
       ctx.beginPath(); ctx.moveTo(px + 8, ry + rh - 1); ctx.lineTo(px + pw - 8, ry + rh - 1); ctx.stroke();
     }
   });
+}
+
+function drawRankedLeaderboard(px, py, pw, scrollOff = 0) {
+  const rh = 34, visRows = 8, totalRows = rankedBoard.length;
+  const panelH = 52 + visRows * rh + 14;
+  panel(px, py, pw, panelH, 14);
+
+  // Başlık
+  ctx.font = 'bold 14px Outfit'; ctx.textAlign = 'center'; ctx.fillStyle = '#fbbf24';
+  ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 10;
+  ctx.fillText('🏆 Global Sıralama', px + pw / 2, py + 22); ctx.shadowBlur = 0;
+
+  // Oyuncunun kendi bilgisi
+  const myTier = getRankTier(myRankedScore);
+  ctx.font = 'bold 11px Outfit'; ctx.textAlign = 'center';
+  ctx.fillStyle = myTier.color;
+  const myLabel = myRankedPos > 0 ? `${myTier.emoji} Sen: #${myRankedPos} · ${myTier.name} · ${myRankedScore} puan` : `${myTier.emoji} ${myTier.name} · ${myRankedScore} puan`;
+  ctx.fillText(myLabel, px + pw / 2, py + 40);
+
+  if (rankedBoard.length === 0) {
+    ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.4)';
+    ctx.fillText('Henüz kayıtlı skor yok', px + pw / 2, py + 70); return;
+  }
+
+  const startI = Math.max(0, Math.min(scrollOff, Math.max(0, totalRows - visRows)));
+  const slice = rankedBoard.slice(startI, startI + visRows);
+  slice.forEach((e, i) => {
+    const ry = py + 52 + i * rh;
+    const isMe = e.deviceId === myDeviceId;
+    const tier = getRankTier(e.bestScore);
+    const pos = startI + i + 1;
+    const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos + '.';
+
+    // Satır arka planı (kendi satırı vurgulanır)
+    if (isMe) {
+      ctx.save(); ctx.globalAlpha = 0.25;
+      rr(px + 4, ry - 2, pw - 8, rh - 2, 8);
+      ctx.fillStyle = tier.color; ctx.fill(); ctx.restore();
+    }
+
+    ctx.font = isMe ? 'bold 12px Outfit' : '11px Outfit';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = isMe ? tier.color : (pos <= 3 ? ['#fbbf24', '#cbd5e1', '#fb923c'][pos - 1] : 'rgba(255,255,255,.55)');
+    ctx.fillText(`${medal} ${tier.emoji} ${e.displayName.slice(0, 12)}`, px + 10, ry + 14);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = isMe ? tier.color : '#4ade80';
+    ctx.font = isMe ? 'bold 13px Outfit' : '12px Outfit';
+    ctx.fillText(String(e.bestScore), px + pw - 10, ry + 14);
+
+    ctx.font = '9px Outfit'; ctx.fillStyle = tier.color; ctx.textAlign = 'right';
+    ctx.fillText(tier.name, px + pw - 10, ry + 26);
+
+    if (i < slice.length - 1) {
+      ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px + 8, ry + rh - 1); ctx.lineTo(px + pw - 8, ry + rh - 1); ctx.stroke();
+    }
+  });
+
+  // Scroll göstergesi
+  if (totalRows > visRows) {
+    ctx.font = '9px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.textAlign = 'center';
+    ctx.fillText(`${startI + 1}–${startI + slice.length} / ${totalRows}`, px + pw / 2, py + panelH - 4);
+  }
 }
 
 /* ── CHARACTERS ── */
@@ -1288,7 +1418,7 @@ function drawGround(off, gc) {
 }
 let _skyGradCache = null, _skyGradKey = '';
 function drawSky(lv) {
-  const skyKey = (lv.mode === 'flappy' && G.state === ST.PLAY) ? 'flappy_' + (G.flappyPhase||0) : lv.sky.join(',');
+  const skyKey = (lv.mode === 'flappy' && G.state === ST.PLAY) ? 'flappy_' + (G.flappyPhase || 0) : lv.sky.join(',');
   if (_skyGradKey !== skyKey || !_skyGradCache) {
     _skyGradCache = ctx.createLinearGradient(0, 0, 0, H - GROUND_H);
     _skyGradKey = skyKey;
@@ -1830,7 +1960,8 @@ const G = {
       // ── ARAÇ SPAWN ──
       this.cars = this.cars || [];
       this._frogSpawnTimer = (this._frogSpawnTimer || 0) + 1;
-      const diffMul = this._frogDiffMul || 1;
+      this._frogDiffMul = 0.5 + Math.min(this.score * 0.12, 2.0);
+      const diffMul = this._frogDiffMul;
       // Spawn interval: başlangıçta rahat, gittikçe sıklaşır (ama çok da sık değil)
       const spawnInterval = Math.max(22, Math.floor(52 / diffMul));
 
@@ -2024,13 +2155,17 @@ const G = {
     const newLv = Math.floor(playerXP / XP_PER_LV) + 1; if (newLv > playerLv) { playerLv = newLv; sfxXP(); }
     saveAll();
 
-    if ((this.cfg.leaderboard || this.cfg.mode === 'flappy') && this.score > 0) {
+    if (this.cfg.mode === 'flappy' && this.score > 0) {
+      _lbScrollOff = 0;
+      if (myDisplayName) {
+        rankedSubmit(myDisplayName, this.score);
+      } else {
+        this._pendingLbScore = this.score;
+        this._lbNameInput = '';
+      }
+    } else if (this.cfg.leaderboard && this.score > 0) {
       this._pendingLbScore = this.score;
       this._lbNameInput = '';
-      if (this.cfg.mode === 'flappy') {
-        const prevBest = S.g('flappy_best', 0);
-        if (this.score > prevBest) { S.s('flappy_best', this.score); lbFetchGlobal(); }
-      }
     }
   },
 
@@ -2976,51 +3111,84 @@ const G = {
         ctx.restore();
       }
       if (this.cfg.mode === 'flappy') {
-        // ── Saf Flappy: Özel Tam Sayfa Skorboard ──
-        const pw = 340, ph = 480, px = (W - pw) / 2, py = 28;
-        panel(px, py, pw, ph, 20);
-        // Başlık
-        ctx.textAlign = 'center';
-        ctx.font = '900 26px Outfit'; ctx.fillStyle = '#f87171';
-        ctx.shadowColor = '#f87171'; ctx.shadowBlur = 16;
-        ctx.fillText('💥 ' + T('gameover'), W / 2, py + 44); ctx.shadowBlur = 0;
-        // Büyük skor
-        ctx.font = '900 56px Outfit'; ctx.fillStyle = '#fbbf24';
-        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = 22;
-        ctx.fillText(this.score, W / 2, py + 110); ctx.shadowBlur = 0;
-        ctx.font = 'bold 13px Outfit'; ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.fillText('SKOR', W / 2, py + 126);
-        // Faz bilgisi
+        // ── Dereceli: Rank + Global Sıralama ──
+        const pw = 340, px = (W - pw) / 2, py = 14;
+        const needsName = this._pendingLbScore !== undefined;
+        const tier = getRankTier(this.score);
+        const nextTier = getNextRankTier(this.score);
         const PHASE_NAMES = ['🌿 Klasik', '💨 Rüzgar', '🌑 Karanlık', '⚡ Glitch', '🚀 Uzay', '🌊 Derin', '🌌 Kaos'];
         const PHASE_COLS = ['#4ade80', '#93c5fd', '#a78bfa', '#ff0080', '#818cf8', '#14b8a6', '#f97316'];
         const lastPhase = Math.floor(this.score / 10) % 7;
-        ctx.font = 'bold 13px Outfit'; ctx.fillStyle = PHASE_COLS[lastPhase];
-        ctx.shadowColor = PHASE_COLS[lastPhase]; ctx.shadowBlur = 8;
-        ctx.fillText('Son Dünya: ' + PHASE_NAMES[lastPhase], W / 2, py + 148); ctx.shadowBlur = 0;
-        // Coin + süre
-        ctx.font = 'bold 16px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = 6;
-        ctx.fillText(`🌟 +${this.sesC} altın`, W / 2, py + 170); ctx.shadowBlur = 0;
-        const el = Math.floor(this.elapsed / 60);
-        ctx.font = '12px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.4)';
-        ctx.fillText(`⏱ ${el}${T('sec')}`, W / 2, py + 188);
-        // İsim girişi
-        if (this._pendingLbScore !== undefined) {
-          ctx.font = '12px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.65)';
-          ctx.fillText('Sıralamaya adını yaz:', W / 2, py + 210);
-          rr(px + 18, py + 216, pw - 36, 30, 9);
-          ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fill();
-          ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.8; ctx.stroke();
-          ctx.font = 'bold 16px Outfit'; ctx.fillStyle = '#fbbf24';
-          ctx.fillText((this._lbNameInput || '') + '▌', W / 2, py + 237);
-          this._bb.lbSave = smBtn('💾 Kaydet', W / 2 - 58, py + 254, 116, 32, '#16a34a', '#15803d');
-        } else {
-          ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.35)';
-          ctx.fillText('✔ Skor kaydedildi', W / 2, py + 218);
+
+        // ── Üst bilgi paneli ──
+        const infoPh = needsName ? 278 : 248;
+        panel(px, py, pw, infoPh, 18);
+        ctx.textAlign = 'center';
+        ctx.font = '900 22px Outfit'; ctx.fillStyle = '#f87171';
+        ctx.shadowColor = '#f87171'; ctx.shadowBlur = isMobile ? 0 : 12;
+        ctx.fillText('💥 ' + T('gameover'), W / 2, py + 36); ctx.shadowBlur = 0;
+
+        // Skor
+        ctx.font = '900 50px Outfit'; ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#fbbf24'; ctx.shadowBlur = isMobile ? 0 : 18;
+        ctx.fillText(this.score, W / 2, py + 90); ctx.shadowBlur = 0;
+        ctx.font = 'bold 11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.4)';
+        ctx.fillText('SKOR', W / 2, py + 104);
+
+        // Rank badge
+        ctx.font = 'bold 18px Outfit'; ctx.fillStyle = tier.color;
+        ctx.shadowColor = tier.color; ctx.shadowBlur = isMobile ? 0 : 8;
+        ctx.fillText(tier.emoji + ' ' + tier.name, W / 2, py + 128); ctx.shadowBlur = 0;
+
+        // Sonraki rank ilerleme çubuğu
+        if (nextTier) {
+          const barW = pw - 60, barX = px + 30, barY = py + 138;
+          const prog = (this.score - tier.min) / (nextTier.min - tier.min);
+          rr(barX, barY, barW, 7, 4); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+          rr(barX, barY, Math.max(6, barW * Math.min(prog, 1)), 7, 4); ctx.fillStyle = tier.color; ctx.fill();
+          ctx.font = '9px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.textAlign = 'right';
+          ctx.fillText(nextTier.emoji + ' ' + nextTier.name + ' → ' + nextTier.min + ' puan', px + pw - 30, barY + 18); ctx.textAlign = 'center';
         }
-        // Liderlik tablosu
-        drawLeaderboard(px, py + 290, pw);
+
+        // Faz + coin
+        ctx.font = 'bold 12px Outfit'; ctx.fillStyle = PHASE_COLS[lastPhase];
+        ctx.fillText('Son Dünya: ' + PHASE_NAMES[lastPhase], W / 2, py + 166);
+        ctx.font = 'bold 13px Outfit'; ctx.fillStyle = C.gold; ctx.shadowColor = C.gold; ctx.shadowBlur = isMobile ? 0 : 4;
+        ctx.fillText('🌟 +' + this.sesC + ' altın', W / 2, py + 184); ctx.shadowBlur = 0;
+
+        // İsim girişi (ilk kez) veya kayıt durumu
+        if (needsName) {
+          ctx.font = '11px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.6)';
+          ctx.fillText('Sıralamaya adını yaz:', W / 2, py + 206);
+          rr(px + 18, py + 212, pw - 36, 30, 9); ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fill();
+          ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.8; ctx.stroke();
+          ctx.font = 'bold 15px Outfit'; ctx.fillStyle = '#fbbf24';
+          ctx.fillText((this._lbNameInput || '') + '▌', W / 2, py + 232);
+          this._bb.lbSave = smBtn('💾 Kaydet', W / 2 - 55, py + 250, 110, 28, '#16a34a', '#15803d');
+        } else {
+          ctx.font = '11px Outfit'; ctx.fillStyle = '#4ade80';
+          ctx.fillText('✔ ' + (myDisplayName || 'Anonim') + ' — skor kaydedildi', W / 2, py + 210);
+          const myBest = myRankedScore;
+          if (this.score >= myBest) {
+            ctx.font = 'bold 11px Outfit'; ctx.fillStyle = '#fbbf24';
+            ctx.fillText('🏅 Yeni Kişisel Rekorum!', W / 2, py + 228);
+          } else {
+            ctx.font = '10px Outfit'; ctx.fillStyle = 'rgba(255,255,255,.3)';
+            ctx.fillText('En iyi: ' + myBest + ' · Sıralaman: #' + (myRankedPos || '?'), W / 2, py + 228);
+          }
+        }
+
+        // Global sıralama (kaydırılabilir)
+        const lbY = py + infoPh + 6;
+        drawRankedLeaderboard(px, lbY, pw, _lbScrollOff);
+        const lbPanelH = 56 + 7 * 34 + 14;
+        if (rankedBoard.length > 7) {
+          this._bb.lbUp = smBtn('▲', px + pw - 52, lbY + 4, 22, 20, '#334155', '#1e3a5f');
+          this._bb.lbDown = smBtn('▼', px + pw - 26, lbY + 4, 22, 20, '#334155', '#1e3a5f');
+        }
+
         // Butonlar
-        const btnY = py + ph + 18;
+        const btnY = lbY + lbPanelH + 10;
         if (this.deadT > 50) {
           if (diamonds > 0) {
             this._bb.revive = smBtn('💎 Diril (-1)', W / 2 - 80, btnY, 160, 36, '#0ea5e9', '#0284c7');
@@ -3142,8 +3310,10 @@ const G = {
       // Game over actions
       if (this.state === ST.OVER && this.deadT > 50) {
         // Leaderboard save button
+        if (this._bb.lbUp && hitTest(this._bb.lbUp, cx, cy)) { _lbScrollOff = Math.max(0, _lbScrollOff - 1); sfxSwsh(); return; }
+        if (this._bb.lbDown && hitTest(this._bb.lbDown, cx, cy)) { _lbScrollOff = Math.min(Math.max(0, rankedBoard.length - 7), _lbScrollOff + 1); sfxSwsh(); return; }
         if (this._bb.lbSave && hitTest(this._bb.lbSave, cx, cy) && this._pendingLbScore !== undefined) {
-          lbSubmit(this._lbNameInput || 'Anonim', this._pendingLbScore);
+          rankedSubmit(this._lbNameInput || 'Anonim', this._pendingLbScore);
           this._pendingLbScore = undefined;
           sfxCoin(); return;
         }
@@ -3168,15 +3338,12 @@ const G = {
       this.tap(cx, cy);
     }
   },
-  loop(ts = 0) {
+  loop(ts) {
     requestAnimationFrame(t => this.loop(t));
-    if (!this._lt) { this._lt = ts; return; }
-    const elapsed = Math.min(ts - this._lt, 50);
-    const STEP = 1000 / 60;
-    this._acc = (this._acc || 0) + elapsed;
-    let steps = 0;
-    while (this._acc >= STEP && steps < 3) { this.update(); this._acc -= STEP; steps++; }
+    if (!this._lt) { this._lt = ts; this.update(); this.draw(); return; }
+    if (isMobile && ts - this._lt < 1000 / 30 - 1) return;
     this._lt = ts;
+    this.update();
     this.draw();
   }
 };
@@ -3190,11 +3357,11 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); G.holding = true; if (G.cfg?.mode !== 'buoy') G.tap(W * 0.5, H * 0.4); return; }
   // E7: P key toggles pause
   if (e.code === 'KeyP' && (G.state === ST.PLAY || G.state === ST.PAUSE)) { e.preventDefault(); G.togglePause(); return; }
-  // Leaderboard name input (B7 game over)
+  // Ranked name input (ilk kez oynayanlar için)
   if (G.state === ST.OVER && G._pendingLbScore !== undefined) {
     if (e.key === 'Backspace') { G._lbNameInput = (G._lbNameInput || '').slice(0, -1); e.preventDefault(); return; }
-    if (e.key === 'Enter') { lbSubmit(G._lbNameInput || 'Anonim', G._pendingLbScore); G._pendingLbScore = undefined; sfxCoin(); e.preventDefault(); return; }
-    if (e.key.length === 1 && (G._lbNameInput || '').length < 12) { G._lbNameInput = (G._lbNameInput || '') + e.key; e.preventDefault(); return; }
+    if (e.key === 'Enter') { rankedSubmit(G._lbNameInput || 'Anonim', G._pendingLbScore); G._pendingLbScore = undefined; sfxCoin(); e.preventDefault(); return; }
+    if (e.key.length === 1 && (G._lbNameInput || '').length < 14) { G._lbNameInput = (G._lbNameInput || '') + e.key; e.preventDefault(); return; }
   }
   if (G.state === ST.SETS) {
     if (e.key === 'Backspace') { devCode = devCode.slice(0, -1); return; }
@@ -3206,5 +3373,6 @@ document.addEventListener('keyup', e => { if (e.code === 'Space' || e.code === '
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === ST.PLAY) G.togglePause(); });
 
 
+rankedFetchGlobal(); // uygulama açılınca global skoru çek
 applyDevMode(); // restore dev unlocks on page load
 G.init(); requestAnimationFrame(t => G.loop(t));

@@ -625,6 +625,18 @@ window.uiC = function(action, val) {
         window.updateHTMLUI(G);
         return; // already updated, skip redundant call at end
     }
+    else if (action === 'buyD') {
+        const opts = { title: 'Elmas Satın Al', text: `💎 Elmas satın alma sistemi çok yakında aktif olacak!\n\nŞu an elimizde ${typeof diamonds !== 'undefined' ? diamonds : 0} elmasın var.`, confirmButtonText: 'Tamam', background: '#1e1b2e', color: '#fff' };
+        if (typeof Swal !== 'undefined') { Swal.fire(opts); }
+        else { alert('Elmas satın alma sistemi çok yakında aktif olacak!'); }
+        return;
+    }
+    else if (action === 'lang') {
+        if (typeof curLang !== 'undefined') {
+            curLang = curLang === 'tr' ? 'en' : 'tr';
+            if (typeof S !== 'undefined') S.s('lang', curLang);
+        }
+    }
     else if (action === 'retry') G.startLv(G.lvi);
     else if (action === 'next') G.startLv(G.lvi + 1);
     else if (action === 'pause') G.togglePause();
